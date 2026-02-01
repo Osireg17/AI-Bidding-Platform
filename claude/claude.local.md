@@ -105,9 +105,12 @@ AI-Bidding-Platform/
 │   ├── events/             # Event schemas, routing keys, envelope types
 │   └── pkg/                # Small shared utilities
 ├── frontend/               # React + Vite app
+├── infra/
+│   ├── compose/             # docker-compose.yml for local dev
+│   └── migrations/          # Database migration files
 ├── claude/                 # Claude coding standard (this file)
 ├── docs/                   # Project documentation
-├── docker-compose.yml      # Local dev: Postgres, Redis, RabbitMQ
+├── go.work                 # Go workspace file
 ├── Makefile                # Common tasks: run, build, test
 └── README.md
 ```
@@ -408,11 +411,20 @@ Docs:
 | Redis | 6379 |
 | RabbitMQ | 5672 (AMQP), 15672 (management UI) |
 
-### Commands [TBD — will be defined in Makefile]
+### Commands (defined in Makefile)
 
 ```bash
 # Start infrastructure (Postgres, Redis, RabbitMQ)
 make infra-up
+
+# Stop infrastructure
+make infra-down
+
+# Stop infrastructure and delete volumes
+make infra-reset
+
+# View infrastructure logs
+make infra-logs
 
 # Run a specific service
 make run-auction
