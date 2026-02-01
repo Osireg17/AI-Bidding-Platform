@@ -90,7 +90,7 @@ AI-Bidding-Platform/
 
 ## Prerequisites
 
-- Go 1.22+
+- Go 1.25+
 - Node.js 20+
 - Docker & Docker Compose
 

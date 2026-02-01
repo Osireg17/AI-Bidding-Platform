@@ -1,4 +1,4 @@
-.PHONY: infra-up infra-down infra-logs \
+.PHONY: infra-up infra-down infra-reset infra-logs \
        run-auction run-bid run-bff run-bot run-all \
        run-frontend test
 
