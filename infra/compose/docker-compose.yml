@@ -3,15 +3,15 @@ services:
     image: postgres:16-alpine
     container_name: bidding-postgres
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-bidding}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bidding_dev}
-      POSTGRES_DB: ${POSTGRES_DB:-bidding_platform}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bidding}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -33,8 +33,8 @@ services:
     image: rabbitmq:3-management-alpine
     container_name: bidding-rabbitmq
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-guest}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-guest}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
     ports:
       - "5672:5672"
       - "15672:15672"
