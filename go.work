@@ -1,0 +1,9 @@
+go 1.25.6
+
+use (
+	./services/auction-service
+	./services/bff
+	./services/bid-service
+	./services/bot-service
+	./shared
+)

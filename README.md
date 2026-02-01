@@ -80,14 +80,17 @@ AI-Bidding-Platform/
 │   ├── events/              # Event schemas + routing keys
 │   └── pkg/                 # Small shared utilities
 ├── frontend/                # React + Vite dashboard
+├── infra/
+│   ├── compose/             # docker-compose.yml for local dev
+│   └── migrations/          # Database migration files
 ├── docs/                    # Project documentation
-├── docker-compose.yml       # Local dev infrastructure
+├── go.work                  # Go workspace file
 └── Makefile                 # Common tasks
 ```
 
 ## Prerequisites
 
-- Go 1.22+
+- Go 1.25+
 - Node.js 20+
 - Docker & Docker Compose
 
