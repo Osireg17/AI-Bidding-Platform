@@ -32,7 +32,11 @@ type Config struct {
 
 // Load reads configuration from environment variables with sensible defaults.
 func Load() (*Config, error) {
-	port := getEnvInt("AUCTION_SERVICE_PORT", 8081)
+	// Railway injects PORT; fall back to AUCTION_SERVICE_PORT for local dev.
+	port := getEnvInt("PORT", 0)
+	if port == 0 {
+		port = getEnvInt("AUCTION_SERVICE_PORT", 8081)
+	}
 	dbURL := getEnv("DATABASE_URL", "")
 	rabbitURL := getEnv("RABBITMQ_URL", "")
 	logLevel := getEnv("LOG_LEVEL", "info")
