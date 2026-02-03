@@ -2,14 +2,6 @@ package domain
 
 import "context"
 
-// === CONTEXT ===
-// Purpose: Port interfaces that define the boundaries of the domain layer.
-// The domain depends on these interfaces; infrastructure packages implement them.
-// This is the Ports & Adapters pattern — domain never imports infrastructure.
-//
-// === DEPENDENCIES ===
-// context — for cancellation and deadlines on all operations.
-
 // AuctionRepository defines persistence operations for Auction aggregates.
 type AuctionRepository interface {
 	// Create persists a new auction. Returns error if it already exists.

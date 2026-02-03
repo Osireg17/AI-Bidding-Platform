@@ -7,16 +7,6 @@ import (
 	"github.com/uptrace/bun"
 )
 
-// === CONTEXT ===
-// Purpose: Core Auction aggregate — the central domain type for the auction-service.
-// Contains all business rules for auction lifecycle state transitions.
-//
-// === DATA / STATE ===
-// Auction is a mutable struct. Status transitions are guarded by methods.
-// Lifecycle: Pending -> Active -> (EndingSoon) -> Closed
-// Created per-auction, persisted in Postgres, loaded/saved via AuctionRepository.
-
-// AuctionStatus represents the lifecycle state of an auction.
 type AuctionStatus string
 
 const (
@@ -42,13 +32,6 @@ type Auction struct {
 	CreatedAt    time.Time     `bun:",nullzero,notnull,default:current_timestamp"`
 	UpdatedAt    time.Time     `bun:",nullzero,notnull,default:current_timestamp"`
 }
-
-// === BEHAVIOR: NewAuction ===
-// Input: title, description, startPrice, duration
-// Output: *Auction in Pending status, or error if data is invalid
-// Preconditions: title non-empty, startPrice > 0, duration > 0
-// Postconditions: Auction created with generated ID, status=pending, times set
-// Edge Cases: empty title, zero/negative price, zero/negative duration
 
 // NewAuction creates a new Auction in Pending status.
 func NewAuction(title, description string, startPrice float64, duration time.Duration) (*Auction, error) {
@@ -76,10 +59,6 @@ func NewAuction(title, description string, startPrice float64, duration time.Dur
 		UpdatedAt:    now,
 	}, nil
 }
-
-// === BEHAVIOR: Activate ===
-// Preconditions: status must be Pending
-// Postconditions: status becomes Active, UpdatedAt refreshed
 
 // Activate transitions a Pending auction to Active.
 func (a *Auction) Activate() error {
