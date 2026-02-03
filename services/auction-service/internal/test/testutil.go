@@ -46,7 +46,11 @@ func NewTestDB(t *testing.T) *bun.DB {
 func CleanupDB(t *testing.T, db *bun.DB) {
 	t.Helper()
 
-	if _, err := db.ExecContext(context.Background(), "TRUNCATE TABLE auctions RESTART IDENTITY CASCADE"); err != nil {
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+if _, err := db.ExecContext(ctx, "TRUNCATE TABLE auctions RESTART IDENTITY CASCADE"); err != nil {
+    t.Fatalf("failed to cleanup database: %v", err)
+}
 		t.Fatalf("failed to cleanup database: %v", err)
 	}
 }
