@@ -11,37 +11,12 @@ import (
 	"go.uber.org/zap"
 )
 
-// === CONTEXT ===
-// Purpose: RabbitMQ implementation of domain.EventPublisher.
-// Connects to RabbitMQ, declares the topic exchange, and publishes event envelopes.
-// Reference: shared/events/envelope.go for the envelope format.
-//
-// === DEPENDENCIES ===
-// amqp091-go — RabbitMQ client library
-// shared/events — envelope constructor and payload types
-// zap — structured logging
-//
-// === DATA / STATE ===
-// RabbitMQPublisher holds a connection, channel, and logger.
-// Created once at startup via NewRabbitMQPublisher. Closed at shutdown via Close.
-
-// RabbitMQPublisher implements domain.EventPublisher using RabbitMQ.
 type RabbitMQPublisher struct {
 	conn    *amqp.Connection
 	channel *amqp.Channel
 	logger  *zap.Logger
 }
 
-// === BEHAVIOR: NewRabbitMQPublisher ===
-// Input: RabbitMQ URL string, *zap.Logger
-// Output: *RabbitMQPublisher or error
-// Logic:
-//   DIAL RabbitMQ connection
-//   OPEN a channel
-//   DECLARE the topic exchange (auction.events)
-//   RETURN publisher
-
-// NewRabbitMQPublisher connects to RabbitMQ and declares the auction events exchange.
 func NewRabbitMQPublisher(url string, logger *zap.Logger) (*RabbitMQPublisher, error) {
 	conn, err := amqp.Dial(url)
 	if err != nil {
@@ -72,14 +47,6 @@ func NewRabbitMQPublisher(url string, logger *zap.Logger) (*RabbitMQPublisher, e
 	logger.Info("RabbitMQ publisher initialized", zap.String("exchange", events.ExchangeName))
 	return &RabbitMQPublisher{conn: conn, channel: ch, logger: logger}, nil
 }
-
-// === BEHAVIOR: publish (private helper) ===
-// Input: context, routing key, event envelope
-// Output: error if marshalling or publishing fails
-// Logic:
-//   MARSHAL envelope to JSON
-//   PUBLISH to exchange with routing key
-//   LOG success or failure
 
 func (p *RabbitMQPublisher) publish(ctx context.Context, routingKey string, envelope events.Envelope) error {
 	body, err := json.Marshal(envelope)
