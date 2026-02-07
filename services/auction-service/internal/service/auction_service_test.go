@@ -268,7 +268,7 @@ func TestListAuctions_Empty(t *testing.T) {
 	}
 }
 
-func TestListAuctions_MultipleActions(t *testing.T) {
+func TestListAuctions_MultipleCalls(t *testing.T) {
 	ctx := context.Background()
 	repo := &testutil.MockAuctionRepository{
 		ListResult: []*domain.Auction{
