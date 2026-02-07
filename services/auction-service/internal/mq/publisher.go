@@ -50,10 +50,10 @@ func NewRabbitMQPublisher(url string, logger *zap.Logger) (*RabbitMQPublisher, e
 
 func (p *RabbitMQPublisher) publish(ctx context.Context, routingKey string, envelope events.Envelope) error {
 	body, err := json.Marshal(envelope)
+
 	if err != nil {
 		return fmt.Errorf("failed to marshal event %s: %w", envelope.EventType, err)
 	}
-
 	err = p.channel.PublishWithContext(ctx,
 		events.ExchangeName, // exchange
 		routingKey,          // routing key
