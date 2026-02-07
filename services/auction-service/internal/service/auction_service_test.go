@@ -247,3 +247,52 @@ func TestListAuctions(t *testing.T) {
 		t.Fatalf("expected error %v, got %v", repo.ListErr, err)
 	}
 }
+
+func TestListAuctions_Empty(t *testing.T) {
+	ctx := context.Background()
+	repo := &testutil.MockAuctionRepository{
+		ListResult: []*domain.Auction{},
+		ListErr:    nil,
+	}
+	publisher := &testutil.MockEventPublisher{}
+	logger := testutil.NewTestLogger(t)
+
+	svc := NewAuctionService(repo, publisher, logger)
+
+	auctions, err := svc.ListAuctions(ctx)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(auctions) != 0 {
+		t.Fatalf("expected 0 auctions, got %d", len(auctions))
+	}
+}
+
+func TestListAuctions_MultipleActions(t *testing.T) {
+	ctx := context.Background()
+	repo := &testutil.MockAuctionRepository{
+		ListResult: []*domain.Auction{
+			{ID: 1, Title: "Auction 1"},
+			{ID: 2, Title: "Auction 2"},
+		},
+		ListErr: nil,
+	}
+	publisher := &testutil.MockEventPublisher{}
+	logger := testutil.NewTestLogger(t)
+
+	svc := NewAuctionService(repo, publisher, logger)
+
+	for i := range [3]int{} {
+		auctions, err := svc.ListAuctions(ctx)
+		if err != nil {
+			t.Fatalf("iteration %d: expected no error, got %v", i, err)
+		}
+		if len(auctions) != 2 {
+			t.Fatalf("iteration %d: expected 2 auctions, got %d", i, len(auctions))
+		}
+	}
+
+	if repo.ListCalls != 3 {
+		t.Fatalf("expected repo.List called 3 times, got %d", repo.ListCalls)
+	}
+}
