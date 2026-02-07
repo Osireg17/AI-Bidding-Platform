@@ -1,0 +1,249 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/domain"
+	testutil "github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/test"
+)
+
+func TestCreateAuction_HappyPath(t *testing.T) {
+	ctx := context.Background()
+	repo := &testutil.MockAuctionRepository{}
+	publisher := &testutil.MockEventPublisher{}
+	logger := testutil.NewTestLogger(t)
+
+	svc := NewAuctionService(repo, publisher, logger)
+
+	title := "Auction 1"
+	description := "Test auction"
+	startPrice := 25.0
+	duration := 10 * time.Minute
+
+	before := time.Now().UTC()
+	auction, err := svc.CreateAuction(ctx, title, description, startPrice, duration)
+	after := time.Now().UTC()
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if auction == nil {
+		t.Fatalf("expected auction, got nil")
+	}
+
+	if auction.Title != title {
+		t.Fatalf("expected title %q, got %q", title, auction.Title)
+	}
+	if auction.Description != description {
+		t.Fatalf("expected description %q, got %q", description, auction.Description)
+	}
+	if auction.StartPrice != startPrice {
+		t.Fatalf("expected start price %.2f, got %.2f", startPrice, auction.StartPrice)
+	}
+	if auction.CurrentPrice != startPrice {
+		t.Fatalf("expected current price %.2f, got %.2f", startPrice, auction.CurrentPrice)
+	}
+	if auction.Status != domain.StatusActive {
+		t.Fatalf("expected status %q, got %q", domain.StatusActive, auction.Status)
+	}
+	if auction.StartTime.Before(before) || auction.StartTime.After(after) {
+		t.Fatalf("expected StartTime within test window, got %v", auction.StartTime)
+	}
+	if !auction.EndTime.After(auction.StartTime) {
+		t.Fatalf("expected EndTime after StartTime")
+	}
+
+	if repo.CreateCalls != 1 {
+		t.Fatalf("expected repo.Create called once, got %d", repo.CreateCalls)
+	}
+	if repo.CreateArgs[0].Auction != auction {
+		t.Fatalf("expected repo.Create to receive created auction")
+	}
+
+	if publisher.PublishAuctionCreatedCalls != 1 {
+		t.Fatalf("expected PublishAuctionCreated called once, got %d", publisher.PublishAuctionCreatedCalls)
+	}
+	if publisher.PublishAuctionCreatedArgs[0].Auction != auction {
+		t.Fatalf("expected PublishAuctionCreated to receive created auction")
+	}
+}
+
+func TestCreateAuction_RepoError(t *testing.T) {
+	ctx := context.Background()
+	repo := &testutil.MockAuctionRepository{
+		CreateErr: context.DeadlineExceeded,
+	}
+	publisher := &testutil.MockEventPublisher{}
+	logger := testutil.NewTestLogger(t)
+
+	svc := NewAuctionService(repo, publisher, logger)
+
+	_, err := svc.CreateAuction(ctx, "Title", "Description", 10.0, 5*time.Minute)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context.DeadlineExceeded error, got %v", err)
+	}
+
+	if repo.CreateCalls != 1 {
+		t.Fatalf("expected repo.Create called once, got %d", repo.CreateCalls)
+	}
+
+	if publisher.PublishAuctionCreatedCalls != 0 {
+		t.Fatalf("expected PublishAuctionCreated not called, got %d", publisher.PublishAuctionCreatedCalls)
+	}
+}
+
+func TestCreateAuction_InvalidInput(t *testing.T) {
+	ctx := context.Background()
+	repo := &testutil.MockAuctionRepository{}
+	publisher := &testutil.MockEventPublisher{}
+	logger := testutil.NewTestLogger(t)
+
+	svc := NewAuctionService(repo, publisher, logger)
+
+	_, err := svc.CreateAuction(ctx, "", "Description", 10.0, 5*time.Minute)
+	if err == nil {
+		t.Fatalf("expected error for empty title, got nil")
+	}
+
+	_, err = svc.CreateAuction(ctx, "Title", "Description", -5.0, 5*time.Minute)
+	if err == nil {
+		t.Fatalf("expected error for negative start price, got nil")
+	}
+
+	_, err = svc.CreateAuction(ctx, "Title", "Description", 10.0, -1*time.Minute)
+	if err == nil {
+		t.Fatalf("expected error for negative duration, got nil")
+	}
+
+	if repo.CreateCalls != 0 {
+		t.Fatalf("expected repo.Create not called, got %d", repo.CreateCalls)
+	}
+
+	if publisher.PublishAuctionCreatedCalls != 0 {
+		t.Fatalf("expected PublishAuctionCreated not called, got %d", publisher.PublishAuctionCreatedCalls)
+	}
+}
+
+func TestGetAuction(t *testing.T) {
+	ctx := context.Background()
+	repo := &testutil.MockAuctionRepository{
+		GetByIDResult: &domain.Auction{
+			ID:           1,
+			Title:        "Test Auction",
+			Description:  "A test auction",
+			StartPrice:   10.0,
+			CurrentPrice: 10.0,
+			Status:       domain.StatusActive,
+			StartTime:    time.Now().Add(-time.Hour),
+			EndTime:      time.Now().Add(time.Hour),
+		},
+		GetByIDErr: nil,
+	}
+	publisher := &testutil.MockEventPublisher{}
+	logger := testutil.NewTestLogger(t)
+
+	svc := NewAuctionService(repo, publisher, logger)
+
+	auction, err := svc.GetAuction(ctx, 1)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if auction == nil {
+		t.Fatalf("expected auction, got nil")
+	}
+	if auction.ID != 1 {
+		t.Fatalf("expected auction ID 1, got %d", auction.ID)
+	}
+
+	repo.GetByIDResult = nil
+	repo.GetByIDErr = domain.ErrAuctionNotFound
+
+	_, err = svc.GetAuction(ctx, 999)
+	if err == nil {
+		t.Fatalf("expected error for non-existent auction, got nil")
+	}
+	if !errors.Is(err, domain.ErrAuctionNotFound) {
+		t.Fatalf("expected ErrAuctionNotFound, got %v", err)
+	}
+}
+
+func TestGetAuction_NilResult(t *testing.T) {
+	ctx := context.Background()
+	repo := &testutil.MockAuctionRepository{
+		GetByIDResult: nil,
+		GetByIDErr:    nil,
+	}
+	publisher := &testutil.MockEventPublisher{}
+	logger := testutil.NewTestLogger(t)
+
+	svc := NewAuctionService(repo, publisher, logger)
+
+	auction, err := svc.GetAuction(ctx, 1)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if auction != nil {
+		t.Fatalf("expected nil auction, got %v", auction)
+	}
+}
+
+func TestListAuctions(t *testing.T) {
+	ctx := context.Background()
+	repo := &testutil.MockAuctionRepository{
+		ListResult: []*domain.Auction{
+			{
+				ID:           1,
+				Title:        "Auction 1",
+				Description:  "First auction",
+				StartPrice:   10.0,
+				CurrentPrice: 10.0,
+				Status:       domain.StatusActive,
+				StartTime:    time.Now().Add(-time.Hour),
+				EndTime:      time.Now().Add(time.Hour),
+			},
+			{
+				ID:           2,
+				Title:        "Auction 2",
+				Description:  "Second auction",
+				StartPrice:   20.0,
+				CurrentPrice: 20.0,
+				Status:       domain.StatusActive,
+				StartTime:    time.Now().Add(-2 * time.Hour),
+				EndTime:      time.Now().Add(2 * time.Hour),
+			},
+		},
+		ListErr: nil,
+	}
+	publisher := &testutil.MockEventPublisher{}
+	logger := testutil.NewTestLogger(t)
+
+	svc := NewAuctionService(repo, publisher, logger)
+
+	auctions, err := svc.ListAuctions(ctx)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(auctions) != 2 {
+		t.Fatalf("expected 2 auctions, got %d", len(auctions))
+	}
+	if auctions[0].ID != 1 || auctions[1].ID != 2 {
+		t.Fatalf("unexpected auction IDs in result")
+	}
+
+	repo.ListResult = nil
+	repo.ListErr = errors.New("database error")
+
+	_, err = svc.ListAuctions(ctx)
+	if err == nil {
+		t.Fatalf("expected error from repo.List, got nil")
+	}
+	if !errors.Is(err, repo.ListErr) {
+		t.Fatalf("expected error %v, got %v", repo.ListErr, err)
+	}
+}
