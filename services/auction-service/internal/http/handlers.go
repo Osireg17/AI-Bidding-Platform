@@ -12,17 +12,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// === CONTEXT ===
-// Purpose: HTTP handlers for auction endpoints. Parse input, call service, map to HTTP response.
-// No business logic here — just input parsing, service delegation, and response formatting.
-// Reference: service/auction_service.go for the methods being called.
-//
-// === DEPENDENCIES ===
-// service.AuctionService — use-case orchestration (injected)
-// zap.Logger — structured logging (injected)
-// gin — HTTP framework
-
-// AuctionHandler handles HTTP requests for auction operations.
 type AuctionHandler struct {
 	svc    *service.AuctionService
 	logger *zap.Logger
@@ -72,15 +61,6 @@ func toAuctionResponse(a *domain.Auction) auctionResponse {
 	}
 }
 
-// === BEHAVIOR: HandleCreateAuction (POST /api/auctions) ===
-// Input: JSON body with title, description, start_price, duration_sec
-// Output: 201 + auction JSON on success, 400 on validation error, 500 on internal error
-// Logic:
-//   BIND and validate JSON body
-//   CALL service.CreateAuction
-//   MAP result to response
-//   RETURN 201 with auction JSON
-
 func (h *AuctionHandler) HandleCreateAuction(c *gin.Context) {
 	var req createAuctionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -103,10 +83,6 @@ func (h *AuctionHandler) HandleCreateAuction(c *gin.Context) {
 	c.JSON(http.StatusCreated, toAuctionResponse(auction))
 }
 
-// === BEHAVIOR: HandleGetAuction (GET /api/auctions/:id) ===
-// Input: auction ID from URL path
-// Output: 200 + auction JSON on success, 404 if not found, 500 on internal error
-
 func (h *AuctionHandler) HandleGetAuction(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -127,10 +103,6 @@ func (h *AuctionHandler) HandleGetAuction(c *gin.Context) {
 
 	c.JSON(http.StatusOK, toAuctionResponse(auction))
 }
-
-// === BEHAVIOR: HandleListAuctions (GET /api/auctions) ===
-// Input: none
-// Output: 200 + array of auction JSON
 
 func (h *AuctionHandler) HandleListAuctions(c *gin.Context) {
 	auctions, err := h.svc.ListAuctions(c.Request.Context())
