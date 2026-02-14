@@ -7,7 +7,6 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// NewLogger creates a production zap logger with the given level and service name.
 func NewLogger(level string) (*zap.Logger, error) {
 	var zapLevel zapcore.Level
 	if err := zapLevel.UnmarshalText([]byte(level)); err != nil {
@@ -22,5 +21,5 @@ func NewLogger(level string) (*zap.Logger, error) {
 		return nil, fmt.Errorf("failed to build logger: %w", err)
 	}
 
-	return logger.With(zap.String("service", "auction-service")), nil
+	return logger.With(zap.String("service", "bid-service")), nil
 }

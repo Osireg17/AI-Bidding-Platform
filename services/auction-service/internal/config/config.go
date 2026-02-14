@@ -7,20 +7,6 @@ import (
 	"time"
 )
 
-// === CONTEXT ===
-// Purpose: Load environment variables into a typed Config struct.
-// Single source of truth for all auction-service configuration.
-//
-// === BEHAVIOR: Load ===
-// Input: environment variables (from OS or .env)
-// Output: *Config with parsed values, or error if required vars are missing
-// Logic:
-//   READ each env var with fallback defaults for dev
-//   PARSE numeric values (port, thresholds, intervals)
-//   VALIDATE required fields (DatabaseURL, RabbitMQURL)
-//   RETURN populated Config
-
-// Config holds all configuration for the auction service.
 type Config struct {
 	Port                 int
 	DatabaseURL          string
