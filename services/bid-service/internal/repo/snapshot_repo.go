@@ -39,7 +39,7 @@ func (r *PostgresSnapshotRepo) GetByID(ctx context.Context, auctionID int64) (*d
 	return &snapshot, nil
 }
 
-func (r *PostgresSnapshotRepo) UpdateStatus(ctx context.Context, auctionID int64, status string) error {
+func (r *PostgresSnapshotRepo) UpdateStatus(ctx context.Context, auctionID int64, status domain.AuctionStatus) error {
 	_, err := r.db.NewUpdate().Model((*domain.AuctionSnapshot)(nil)).
 		Set("status = ?", status).
 		Where("auction_id = ?", auctionID).

@@ -18,7 +18,7 @@ type AuctionSnapshotRepository interface {
 
 	GetByID(ctx context.Context, auctionID int64) (*AuctionSnapshot, error)
 
-	UpdateStatus(ctx context.Context, auctionID int64, status string) error
+	UpdateStatus(ctx context.Context, auctionID int64, status AuctionStatus) error
 }
 
 type EventPublisher interface {

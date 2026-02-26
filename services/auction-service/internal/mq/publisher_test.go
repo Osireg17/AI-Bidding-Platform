@@ -3,6 +3,7 @@ package mq
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -46,15 +47,28 @@ func TestMain(m *testing.M) {
 
 	code := m.Run()
 
-	testPublisher.Close()
-	testChannel.Close()
-	testConn.Close()
+	if err := testPublisher.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to close testPublisher: %v\n", err)
+		if code == 0 {
+			code = 1
+		}
+	}
+	if err := testChannel.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to close testChannel: %v\n", err)
+		if code == 0 {
+			code = 1
+		}
+	}
+	if err := testConn.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to close testConn: %v\n", err)
+		if code == 0 {
+			code = 1
+		}
+	}
 
 	os.Exit(code)
 }
 
-// consumeOne declares a temp queue bound to the exchange with the given routing key,
-// starts consuming, and returns the deliveries channel plus the queue name for cleanup.
 func consumeOne(t *testing.T, routingKey string) (<-chan amqp.Delivery, string) {
 	t.Helper()
 
