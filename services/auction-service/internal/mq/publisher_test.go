@@ -46,15 +46,22 @@ func TestMain(m *testing.M) {
 
 	code := m.Run()
 
-	testPublisher.Close()
-	testChannel.Close()
-	testConn.Close()
+	err = testPublisher.Close()
+	if err != nil {
+		return
+	}
+	err = testChannel.Close()
+	if err != nil {
+		return
+	}
+	err = testConn.Close()
+	if err != nil {
+		return
+	}
 
 	os.Exit(code)
 }
 
-// consumeOne declares a temp queue bound to the exchange with the given routing key,
-// starts consuming, and returns the deliveries channel plus the queue name for cleanup.
 func consumeOne(t *testing.T, routingKey string) (<-chan amqp.Delivery, string) {
 	t.Helper()
 
