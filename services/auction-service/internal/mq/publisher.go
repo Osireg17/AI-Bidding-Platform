@@ -11,7 +11,7 @@ import (
 
 // AuctionPublisher wraps the shared RabbitMQ publisher with auction-specific methods.
 type AuctionPublisher struct {
-	*messaging.RabbitMQPublisher
+	base *messaging.RabbitMQPublisher
 }
 
 // NewAuctionPublisher creates a new auction event publisher.
@@ -20,7 +20,12 @@ func NewAuctionPublisher(url string, logger *zap.Logger) (*AuctionPublisher, err
 	if err != nil {
 		return nil, err
 	}
-	return &AuctionPublisher{RabbitMQPublisher: base}, nil
+	return &AuctionPublisher{base: base}, nil
+}
+
+// Close shuts down the underlying RabbitMQ connection.
+func (p *AuctionPublisher) Close() error {
+	return p.base.Close()
 }
 
 // PublishAuctionCreated publishes an auction.created event.
@@ -34,7 +39,7 @@ func (p *AuctionPublisher) PublishAuctionCreated(ctx context.Context, auction *d
 		EndTime:     auction.EndTime.Format("2006-01-02T15:04:05Z07:00"),
 	}
 	envelope := events.NewEnvelope(events.RoutingKeyAuctionCreated, events.AuctionEventVersion, "", payload)
-	return p.Publish(ctx, events.RoutingKeyAuctionCreated, envelope)
+	return p.base.Publish(ctx, events.RoutingKeyAuctionCreated, envelope)
 }
 
 // PublishAuctionEndingSoon publishes an auction.ending_soon event.
@@ -44,7 +49,7 @@ func (p *AuctionPublisher) PublishAuctionEndingSoon(ctx context.Context, auction
 		EndTime:   auction.EndTime.Format("2006-01-02T15:04:05Z07:00"),
 	}
 	envelope := events.NewEnvelope(events.RoutingKeyAuctionEndingSoon, events.AuctionEventVersion, "", payload)
-	return p.Publish(ctx, events.RoutingKeyAuctionEndingSoon, envelope)
+	return p.base.Publish(ctx, events.RoutingKeyAuctionEndingSoon, envelope)
 }
 
 // PublishAuctionEnded publishes an auction.ended event.
@@ -60,5 +65,5 @@ func (p *AuctionPublisher) PublishAuctionEnded(ctx context.Context, auction *dom
 		FinalStatus: finalStatus,
 	}
 	envelope := events.NewEnvelope(events.RoutingKeyAuctionEnded, events.AuctionEventVersion, "", payload)
-	return p.Publish(ctx, events.RoutingKeyAuctionEnded, envelope)
+	return p.base.Publish(ctx, events.RoutingKeyAuctionEnded, envelope)
 }

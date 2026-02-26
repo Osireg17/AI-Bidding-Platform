@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	testPublisher *RabbitMQPublisher
+	testPublisher *AuctionPublisher
 	testConn      *amqp.Connection
 	testChannel   *amqp.Channel
 )
@@ -28,7 +28,7 @@ func TestMain(m *testing.M) {
 	}
 
 	logger := zap.NewNop()
-	publisher, err := NewRabbitMQPublisher(rabbitURL, logger)
+	publisher, err := NewAuctionPublisher(rabbitURL, logger)
 	if err != nil {
 		panic("failed to create publisher: " + err.Error())
 	}
@@ -111,7 +111,7 @@ func unmarshalEnvelope(t *testing.T, body []byte) events.Envelope {
 	return env
 }
 
-func extractPayload(t *testing.T, rawPayload interface{}, target interface{}) {
+func extractPayload(t *testing.T, rawPayload any, target any) {
 	t.Helper()
 	payloadBytes, err := json.Marshal(rawPayload)
 	require.NoError(t, err, "failed to re-marshal payload")
@@ -230,9 +230,9 @@ func TestPublishAuctionEnded_Unsold(t *testing.T) {
 	assert.Equal(t, "unsold", payload.FinalStatus)
 }
 
-func TestNewRabbitMQPublisher_InvalidURL(t *testing.T) {
+func TestNewAuctionPublisher_InvalidURL(t *testing.T) {
 	logger := zap.NewNop()
-	_, err := NewRabbitMQPublisher("amqp://invalid:invalid@localhost:9999/", logger)
+	_, err := NewAuctionPublisher("amqp://invalid:invalid@localhost:9999/", logger)
 	require.Error(t, err)
 }
 
@@ -243,7 +243,7 @@ func TestClose(t *testing.T) {
 	}
 
 	logger := zap.NewNop()
-	pub, err := NewRabbitMQPublisher(rabbitURL, logger)
+	pub, err := NewAuctionPublisher(rabbitURL, logger)
 	require.NoError(t, err)
 
 	err = pub.Close()

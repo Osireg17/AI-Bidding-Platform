@@ -11,7 +11,7 @@ import (
 
 // BidPublisher wraps the shared RabbitMQ publisher with bid-specific methods.
 type BidPublisher struct {
-	*messaging.RabbitMQPublisher
+	base *messaging.RabbitMQPublisher
 }
 
 // NewBidPublisher creates a new bid event publisher.
@@ -20,7 +20,12 @@ func NewBidPublisher(url string, logger *zap.Logger) (*BidPublisher, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &BidPublisher{RabbitMQPublisher: base}, nil
+	return &BidPublisher{base: base}, nil
+}
+
+// Close shuts down the underlying RabbitMQ connection.
+func (p *BidPublisher) Close() error {
+	return p.base.Close()
 }
 
 // PublishBidPlaced publishes a bid.placed event.
@@ -36,7 +41,7 @@ func (p *BidPublisher) PublishBidPlaced(ctx context.Context, bid *domain.Bid) er
 	envelope := events.NewEnvelope(
 		events.RoutingKeyBidPlaced, events.BidEventVersion, "", payload)
 
-	return p.Publish(ctx, events.RoutingKeyBidPlaced, envelope)
+	return p.base.Publish(ctx, events.RoutingKeyBidPlaced, envelope)
 }
 
 // PublishBidRejected publishes a bid.rejected event.
@@ -53,5 +58,5 @@ func (p *BidPublisher) PublishBidRejected(ctx context.Context, bid *domain.Bid, 
 	envelope := events.NewEnvelope(
 		events.RoutingKeyBidRejected, events.BidEventVersion, "", payload)
 
-	return p.Publish(ctx, events.RoutingKeyBidRejected, envelope)
+	return p.base.Publish(ctx, events.RoutingKeyBidRejected, envelope)
 }

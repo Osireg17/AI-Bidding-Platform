@@ -74,7 +74,7 @@ func main() {
 	logger.Info("database migrations applied")
 
 	// Connect to RabbitMQ.
-	publisher, err := mq.NewRabbitMQPublisher(cfg.RabbitMQURL, logger)
+	publisher, err := mq.NewAuctionPublisher(cfg.RabbitMQURL, logger)
 	if err != nil {
 		logger.Fatal("failed to connect to RabbitMQ", zap.Error(err))
 	}
