@@ -3,6 +3,7 @@ package mq
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -46,17 +47,23 @@ func TestMain(m *testing.M) {
 
 	code := m.Run()
 
-	err = testPublisher.Close()
-	if err != nil {
-		return
+	if err := testPublisher.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to close testPublisher: %v\n", err)
+		if code == 0 {
+			code = 1
+		}
 	}
-	err = testChannel.Close()
-	if err != nil {
-		return
+	if err := testChannel.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to close testChannel: %v\n", err)
+		if code == 0 {
+			code = 1
+		}
 	}
-	err = testConn.Close()
-	if err != nil {
-		return
+	if err := testConn.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to close testConn: %v\n", err)
+		if code == 0 {
+			code = 1
+		}
 	}
 
 	os.Exit(code)

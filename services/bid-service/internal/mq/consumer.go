@@ -3,6 +3,7 @@ package mq
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -14,11 +15,37 @@ import (
 
 const bidServiceQueueName = "bid.q"
 
+var errNonRetryable = errors.New("non-retryable consumer error")
+
 type AuctionEventConsumer struct {
 	conn    *amqp.Connection
 	channel *amqp.Channel
 	repo    domain.AuctionSnapshotRepository
 	logger  *zap.Logger
+}
+
+type delivery interface {
+	Body() []byte
+	RoutingKey() string
+	DeliveryTag() uint64
+	Ack(multiple bool) error
+	Nack(multiple, requeue bool) error
+}
+
+type amqpDelivery struct {
+	amqp.Delivery
+}
+
+func (d amqpDelivery) Body() []byte {
+	return d.Delivery.Body
+}
+
+func (d amqpDelivery) RoutingKey() string {
+	return d.Delivery.RoutingKey
+}
+
+func (d amqpDelivery) DeliveryTag() uint64 {
+	return d.Delivery.DeliveryTag
 }
 
 func NewAuctionEventConsumer(url string, repo domain.AuctionSnapshotRepository, logger *zap.Logger) (*AuctionEventConsumer, error) {
@@ -106,9 +133,11 @@ func (c *AuctionEventConsumer) Start(ctx context.Context) error {
 		case msg, ok := <-msgs:
 			if !ok {
 				c.logger.Warn("message channel closed")
-				return nil
+				return errors.New("auction event consumer message channel closed")
 			}
-			c.handleDelivery(ctx, msg)
+			if err := c.handleDelivery(ctx, amqpDelivery{Delivery: msg}); err != nil {
+				return err
+			}
 		case <-ctx.Done():
 			c.logger.Info("auction event consumer shutting down")
 			return nil
@@ -116,59 +145,80 @@ func (c *AuctionEventConsumer) Start(ctx context.Context) error {
 	}
 }
 
-func (c *AuctionEventConsumer) handleDelivery(ctx context.Context, msg amqp.Delivery) {
+func (c *AuctionEventConsumer) handleDelivery(ctx context.Context, msg delivery) error {
 	var envelope events.Envelope
-	if err := json.Unmarshal(msg.Body, &envelope); err != nil {
-		c.logger.Error("failed to unmarshal envelope", zap.Error(err))
+	if err := json.Unmarshal(msg.Body(), &envelope); err != nil {
+		c.logger.Error("failed to unmarshal envelope",
+			zap.Error(err),
+			zap.String("routing_key", msg.RoutingKey()),
+			zap.Uint64("delivery_tag", msg.DeliveryTag()),
+			zap.Int("body_size_bytes", len(msg.Body())),
+		)
 		if err := msg.Ack(false); err != nil {
-			c.logger.Error("failed to ACK message", zap.Error(err))
+			return fmt.Errorf("ack malformed envelope: %w", err)
 		}
-		return
+		return nil
 	}
 
+	var handleErr error
 	switch envelope.EventType {
 	case events.RoutingKeyAuctionCreated:
-		if err := c.handleAuctionCreated(ctx, envelope); err != nil {
-			c.logger.Error("failed to handle auction.created event", zap.Error(err))
-		}
+		handleErr = c.handleAuctionCreated(ctx, envelope)
 	case events.RoutingKeyAuctionEndingSoon:
-		if err := c.handleAuctionEndingSoon(ctx, envelope); err != nil {
-			c.logger.Error("failed to handle auction.ending_soon event", zap.Error(err))
-		}
+		handleErr = c.handleAuctionEndingSoon(ctx, envelope)
 	case events.RoutingKeyAuctionEnded:
-		if err := c.handleAuctionEnded(ctx, envelope); err != nil {
-			c.logger.Error("failed to handle auction.ended event", zap.Error(err))
-		}
+		handleErr = c.handleAuctionEnded(ctx, envelope)
 	default:
 		c.logger.Warn("unknown event type", zap.String("event_type", envelope.EventType))
+		if err := msg.Ack(false); err != nil {
+			return fmt.Errorf("ack unknown event type: %w", err)
+		}
+		return nil
 	}
 
-	if err := msg.Ack(false); err != nil {
-		c.logger.Error("failed to ACK message", zap.Error(err))
+	if handleErr == nil {
+		if err := msg.Ack(false); err != nil {
+			return fmt.Errorf("ack message: %w", err)
+		}
+		return nil
 	}
+
+	if errors.Is(handleErr, errNonRetryable) {
+		c.logger.Warn("dropping non-retryable event", zap.Error(handleErr))
+		if err := msg.Ack(false); err != nil {
+			return fmt.Errorf("ack non-retryable error: %w", err)
+		}
+		return nil
+	}
+
+	c.logger.Error("retryable event handling failure, requeueing", zap.Error(handleErr))
+	if err := msg.Nack(false, true); err != nil {
+		return fmt.Errorf("nack retryable error: %w", err)
+	}
+	return nil
 }
 
 func (c *AuctionEventConsumer) handleAuctionCreated(ctx context.Context, envelope events.Envelope) error {
 	payload, err := reUnmarshalPayload[events.AuctionCreatedPayload](envelope.Payload)
 	if err != nil {
-		return fmt.Errorf("unmarshal AuctionCreatedPayload: %w", err)
+		return fmt.Errorf("%w: unmarshal AuctionCreatedPayload: %v", errNonRetryable, err)
 	}
 
 	startTime, err := time.Parse(time.RFC3339, payload.StartTime)
 	if err != nil {
-		return fmt.Errorf("parse start time: %w", err)
+		return fmt.Errorf("%w: parse start time: %v", errNonRetryable, err)
 	}
 
 	endTime, err := time.Parse(time.RFC3339, payload.EndTime)
 	if err != nil {
-		return fmt.Errorf("parse end time: %w", err)
+		return fmt.Errorf("%w: parse end time: %v", errNonRetryable, err)
 	}
 
 	snapshot := &domain.AuctionSnapshot{
 		AuctionID:  payload.AuctionID,
 		Title:      payload.Title,
 		StartPrice: payload.StartPrice,
-		Status:     "active",
+		Status:     domain.AuctionStatusActive,
 		StartTime:  startTime,
 		EndTime:    endTime,
 	}
@@ -184,10 +234,10 @@ func (c *AuctionEventConsumer) handleAuctionCreated(ctx context.Context, envelop
 func (c *AuctionEventConsumer) handleAuctionEndingSoon(ctx context.Context, envelope events.Envelope) error {
 	payload, err := reUnmarshalPayload[events.AuctionEndingSoonPayload](envelope.Payload)
 	if err != nil {
-		return fmt.Errorf("unmarshal AuctionEndingSoonPayload: %w", err)
+		return fmt.Errorf("%w: unmarshal AuctionEndingSoonPayload: %v", errNonRetryable, err)
 	}
 
-	if err := c.repo.UpdateStatus(ctx, payload.AuctionID, "ending_soon"); err != nil {
+	if err := c.repo.UpdateStatus(ctx, payload.AuctionID, domain.AuctionStatusEndingSoon); err != nil {
 		return fmt.Errorf("update status ending_soon: %w", err)
 	}
 
@@ -198,10 +248,10 @@ func (c *AuctionEventConsumer) handleAuctionEndingSoon(ctx context.Context, enve
 func (c *AuctionEventConsumer) handleAuctionEnded(ctx context.Context, envelope events.Envelope) error {
 	payload, err := reUnmarshalPayload[events.AuctionEndedPayload](envelope.Payload)
 	if err != nil {
-		return fmt.Errorf("unmarshal AuctionEndedPayload: %w", err)
+		return fmt.Errorf("%w: unmarshal AuctionEndedPayload: %v", errNonRetryable, err)
 	}
 
-	if err := c.repo.UpdateStatus(ctx, payload.AuctionID, "closed"); err != nil {
+	if err := c.repo.UpdateStatus(ctx, payload.AuctionID, domain.AuctionStatusClosed); err != nil {
 		return fmt.Errorf("update status closed: %w", err)
 	}
 

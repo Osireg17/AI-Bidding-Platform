@@ -9,7 +9,6 @@ import (
 
 	"github.com/Osireg17/AI-Bidding-Platform/services/bid-service/internal/domain"
 	"github.com/Osireg17/AI-Bidding-Platform/shared/events"
-	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -22,7 +21,7 @@ type mockSnapshotRepo struct {
 	upsertSnapshot     *domain.AuctionSnapshot
 	updateStatusCalled bool
 	updateStatusID     int64
-	updateStatusValue  string
+	updateStatusValue  domain.AuctionStatus
 	errToReturn        error
 }
 
@@ -36,7 +35,7 @@ func (m *mockSnapshotRepo) GetByID(_ context.Context, _ int64) (*domain.AuctionS
 	return nil, m.errToReturn
 }
 
-func (m *mockSnapshotRepo) UpdateStatus(_ context.Context, auctionID int64, status string) error {
+func (m *mockSnapshotRepo) UpdateStatus(_ context.Context, auctionID int64, status domain.AuctionStatus) error {
 	m.updateStatusCalled = true
 	m.updateStatusID = auctionID
 	m.updateStatusValue = status
@@ -49,12 +48,49 @@ func newTestConsumer(repo domain.AuctionSnapshotRepository) *AuctionEventConsume
 	return &AuctionEventConsumer{conn: nil, channel: nil, repo: repo, logger: zap.NewNop()}
 }
 
-func makeDelivery(t *testing.T, eventType string, payload any) amqp.Delivery {
+type fakeDelivery struct {
+	body        []byte
+	routingKey  string
+	deliveryTag uint64
+
+	ackCalls  int
+	nackCalls int
+
+	nackRequeue bool
+}
+
+func (d *fakeDelivery) Body() []byte {
+	return d.body
+}
+
+func (d *fakeDelivery) RoutingKey() string {
+	return d.routingKey
+}
+
+func (d *fakeDelivery) DeliveryTag() uint64 {
+	return d.deliveryTag
+}
+
+func (d *fakeDelivery) Ack(_ bool) error {
+	d.ackCalls++
+	return nil
+}
+
+func (d *fakeDelivery) Nack(_ bool, requeue bool) error {
+	d.nackCalls++
+	d.nackRequeue = requeue
+	return nil
+}
+
+func makeDelivery(t *testing.T, eventType string, payload any) *fakeDelivery {
 	t.Helper()
 	envelope := events.NewEnvelope(eventType, events.AuctionEventVersion, "", payload)
 	body, err := json.Marshal(envelope)
 	require.NoError(t, err)
-	return amqp.Delivery{Body: body}
+	return &fakeDelivery{
+		body:       body,
+		routingKey: eventType,
+	}
 }
 
 func makeAuctionCreatedPayload() events.AuctionCreatedPayload {
@@ -77,14 +113,17 @@ func TestHandleDelivery_AuctionCreated(t *testing.T) {
 	payload := makeAuctionCreatedPayload()
 	delivery := makeDelivery(t, events.RoutingKeyAuctionCreated, payload)
 
-	consumer.handleDelivery(context.Background(), delivery)
+	err := consumer.handleDelivery(context.Background(), delivery)
+	require.NoError(t, err)
 
 	require.True(t, repo.upsertCalled)
 	require.NotNil(t, repo.upsertSnapshot)
 	assert.Equal(t, payload.AuctionID, repo.upsertSnapshot.AuctionID)
-	assert.Equal(t, "active", repo.upsertSnapshot.Status)
+	assert.Equal(t, domain.AuctionStatusActive, repo.upsertSnapshot.Status)
 	assert.Equal(t, payload.Title, repo.upsertSnapshot.Title)
 	assert.Equal(t, payload.StartPrice, repo.upsertSnapshot.StartPrice)
+	assert.Equal(t, 1, delivery.ackCalls)
+	assert.Equal(t, 0, delivery.nackCalls)
 }
 
 func TestHandleDelivery_AuctionEndingSoon(t *testing.T) {
@@ -96,12 +135,15 @@ func TestHandleDelivery_AuctionEndingSoon(t *testing.T) {
 	}
 	delivery := makeDelivery(t, events.RoutingKeyAuctionEndingSoon, payload)
 
-	consumer.handleDelivery(context.Background(), delivery)
+	err := consumer.handleDelivery(context.Background(), delivery)
+	require.NoError(t, err)
 
 	require.True(t, repo.updateStatusCalled)
 	assert.Equal(t, int64(2), repo.updateStatusID)
-	assert.Equal(t, "ending_soon", repo.updateStatusValue)
+	assert.Equal(t, domain.AuctionStatusEndingSoon, repo.updateStatusValue)
 	assert.False(t, repo.upsertCalled)
+	assert.Equal(t, 1, delivery.ackCalls)
+	assert.Equal(t, 0, delivery.nackCalls)
 }
 
 func TestHandleDelivery_AuctionEnded(t *testing.T) {
@@ -114,12 +156,15 @@ func TestHandleDelivery_AuctionEnded(t *testing.T) {
 	}
 	delivery := makeDelivery(t, events.RoutingKeyAuctionEnded, payload)
 
-	consumer.handleDelivery(context.Background(), delivery)
+	err := consumer.handleDelivery(context.Background(), delivery)
+	require.NoError(t, err)
 
 	require.True(t, repo.updateStatusCalled)
 	assert.Equal(t, int64(3), repo.updateStatusID)
-	assert.Equal(t, "closed", repo.updateStatusValue)
+	assert.Equal(t, domain.AuctionStatusClosed, repo.updateStatusValue)
 	assert.False(t, repo.upsertCalled)
+	assert.Equal(t, 1, delivery.ackCalls)
+	assert.Equal(t, 0, delivery.nackCalls)
 }
 
 func TestHandleDelivery_UnknownEventType(t *testing.T) {
@@ -127,22 +172,31 @@ func TestHandleDelivery_UnknownEventType(t *testing.T) {
 	consumer := newTestConsumer(repo)
 	delivery := makeDelivery(t, "some.unknown.event", map[string]any{"foo": "bar"})
 
-	consumer.handleDelivery(context.Background(), delivery)
+	err := consumer.handleDelivery(context.Background(), delivery)
+	require.NoError(t, err)
 
 	assert.False(t, repo.upsertCalled)
 	assert.False(t, repo.updateStatusCalled)
+	assert.Equal(t, 1, delivery.ackCalls)
+	assert.Equal(t, 0, delivery.nackCalls)
 }
 
 func TestHandleDelivery_MalformedJSON(t *testing.T) {
 	repo := &mockSnapshotRepo{}
 	consumer := newTestConsumer(repo)
-	delivery := amqp.Delivery{Body: []byte("not-json")}
+	delivery := &fakeDelivery{
+		body:       []byte("not-json"),
+		routingKey: "auction.created",
+	}
 
 	assert.NotPanics(t, func() {
-		consumer.handleDelivery(context.Background(), delivery)
+		err := consumer.handleDelivery(context.Background(), delivery)
+		require.NoError(t, err)
 	})
 	assert.False(t, repo.upsertCalled)
 	assert.False(t, repo.updateStatusCalled)
+	assert.Equal(t, 1, delivery.ackCalls)
+	assert.Equal(t, 0, delivery.nackCalls)
 }
 
 func TestHandleDelivery_RepoError(t *testing.T) {
@@ -152,9 +206,13 @@ func TestHandleDelivery_RepoError(t *testing.T) {
 	delivery := makeDelivery(t, events.RoutingKeyAuctionCreated, payload)
 
 	assert.NotPanics(t, func() {
-		consumer.handleDelivery(context.Background(), delivery)
+		err := consumer.handleDelivery(context.Background(), delivery)
+		require.NoError(t, err)
 	})
 	assert.True(t, repo.upsertCalled)
+	assert.Equal(t, 0, delivery.ackCalls)
+	assert.Equal(t, 1, delivery.nackCalls)
+	assert.True(t, delivery.nackRequeue)
 }
 
 func TestReUnmarshalPayload(t *testing.T) {
