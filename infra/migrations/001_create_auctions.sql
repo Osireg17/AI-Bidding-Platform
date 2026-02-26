@@ -1,20 +1,11 @@
--- === CONTEXT ===
--- Purpose: Create the auctions table for the auction-service.
--- This is the single source of truth for auction state.
---
--- === DATA / STATE ===
--- One row per auction. Status transitions: pending -> active -> ending_soon -> closed.
--- Prices stored as DOUBLE PRECISION (float64 in Go) for MVP simplicity.
--- Trade-off: real financial systems would use INTEGER cents to avoid floating-point errors.
-
 CREATE TABLE IF NOT EXISTS auctions (
-    id            TEXT PRIMARY KEY,
+    id            BIGSERIAL PRIMARY KEY,
     title         TEXT NOT NULL,
     description   TEXT NOT NULL DEFAULT '',
     start_price   DOUBLE PRECISION NOT NULL,
     current_price DOUBLE PRECISION NOT NULL,
     status        TEXT NOT NULL DEFAULT 'pending',
-    winner_bot_id TEXT NOT NULL DEFAULT '',
+    winner_bot_id BIGINT NOT NULL DEFAULT 0,
     start_time    TIMESTAMPTZ NOT NULL,
     end_time      TIMESTAMPTZ NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
