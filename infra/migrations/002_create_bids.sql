@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS bids (
     amount DOUBLE PRECISION NOT NULL,
     status TEXT NOT NULL,
     reason TEXT NOT NULL DEFAULT '',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_bids_auction_id ON bids(auction_id);
