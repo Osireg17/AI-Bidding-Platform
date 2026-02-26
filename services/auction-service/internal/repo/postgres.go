@@ -9,18 +9,6 @@ import (
 	"github.com/uptrace/bun"
 )
 
-// === CONTEXT ===
-// Purpose: PostgreSQL implementation of domain.AuctionRepository using Bun ORM.
-// This is the adapter side of Ports & Adapters — it implements the port defined in domain/ports.go.
-//
-// === DEPENDENCIES ===
-// bun — SQL-first ORM, wraps database/sql with type-safe query builder
-// domain — for Auction model (with bun struct tags) and AuctionRepository interface
-//
-// === DATA / STATE ===
-// PostgresAuctionRepo holds a *bun.DB connection. Created once at startup, closed at shutdown.
-
-// PostgresAuctionRepo implements domain.AuctionRepository using Bun + PostgreSQL.
 type PostgresAuctionRepo struct {
 	db *bun.DB
 }
@@ -30,11 +18,6 @@ func NewPostgresAuctionRepo(db *bun.DB) *PostgresAuctionRepo {
 	return &PostgresAuctionRepo{db: db}
 }
 
-// === BEHAVIOR: Create ===
-// Input: context, *Auction
-// Output: error if insert fails
-// Logic: INSERT the auction model into the auctions table
-
 func (r *PostgresAuctionRepo) Create(ctx context.Context, auction *domain.Auction) error {
 	_, err := r.db.NewInsert().Model(auction).Returning("id").Exec(ctx)
 	if err != nil {
@@ -42,10 +25,6 @@ func (r *PostgresAuctionRepo) Create(ctx context.Context, auction *domain.Auctio
 	}
 	return nil
 }
-
-// === BEHAVIOR: GetByID ===
-// Input: context, auction ID string
-// Output: *Auction or ErrAuctionNotFound if no row matches
 
 func (r *PostgresAuctionRepo) GetByID(ctx context.Context, id int64) (*domain.Auction, error) {
 	auction := new(domain.Auction)
@@ -59,10 +38,6 @@ func (r *PostgresAuctionRepo) GetByID(ctx context.Context, id int64) (*domain.Au
 	return auction, nil
 }
 
-// === BEHAVIOR: List ===
-// Input: context
-// Output: slice of all auctions ordered by created_at DESC
-
 func (r *PostgresAuctionRepo) List(ctx context.Context) ([]*domain.Auction, error) {
 	var auctions []*domain.Auction
 	err := r.db.NewSelect().Model(&auctions).Order("created_at DESC").Scan(ctx)
@@ -71,10 +46,6 @@ func (r *PostgresAuctionRepo) List(ctx context.Context) ([]*domain.Auction, erro
 	}
 	return auctions, nil
 }
-
-// === BEHAVIOR: Update ===
-// Input: context, *Auction with modified fields
-// Output: error if update fails or auction not found
 
 func (r *PostgresAuctionRepo) Update(ctx context.Context, auction *domain.Auction) error {
 	result, err := r.db.NewUpdate().Model(auction).WherePK().Exec(ctx)
@@ -91,11 +62,6 @@ func (r *PostgresAuctionRepo) Update(ctx context.Context, auction *domain.Auctio
 	return nil
 }
 
-// === BEHAVIOR: FindExpiredActive ===
-// Input: context
-// Output: auctions with status active/ending_soon whose end_time is in the past
-// Note: Returns at most 1 in practice (single-auction-at-a-time design), but returns a slice for correctness.
-
 func (r *PostgresAuctionRepo) FindExpiredActive(ctx context.Context) ([]*domain.Auction, error) {
 	var auctions []*domain.Auction
 	err := r.db.NewSelect().
@@ -109,10 +75,6 @@ func (r *PostgresAuctionRepo) FindExpiredActive(ctx context.Context) ([]*domain.
 	}
 	return auctions, nil
 }
-
-// === BEHAVIOR: FindEndingSoon ===
-// Input: context, thresholdSeconds (how many seconds before end_time counts as "ending soon")
-// Output: active auctions within the ending-soon window that haven't been marked yet
 
 func (r *PostgresAuctionRepo) FindEndingSoon(ctx context.Context, thresholdSeconds int) ([]*domain.Auction, error) {
 	var auctions []*domain.Auction
