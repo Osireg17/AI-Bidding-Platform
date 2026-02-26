@@ -2,6 +2,7 @@ package mq
 
 import (
 	"context"
+	"time"
 
 	"github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/domain"
 	"github.com/Osireg17/AI-Bidding-Platform/shared/events"
@@ -35,8 +36,8 @@ func (p *AuctionPublisher) PublishAuctionCreated(ctx context.Context, auction *d
 		Title:       auction.Title,
 		Description: auction.Description,
 		StartPrice:  auction.StartPrice,
-		StartTime:   auction.StartTime.Format("2006-01-02T15:04:05Z07:00"),
-		EndTime:     auction.EndTime.Format("2006-01-02T15:04:05Z07:00"),
+		StartTime:   auction.StartTime.Format(time.RFC3339),
+		EndTime:     auction.EndTime.Format(time.RFC3339),
 	}
 	envelope := events.NewEnvelope(events.RoutingKeyAuctionCreated, events.AuctionEventVersion, "", payload)
 	return p.base.Publish(ctx, events.RoutingKeyAuctionCreated, envelope)
@@ -46,7 +47,7 @@ func (p *AuctionPublisher) PublishAuctionCreated(ctx context.Context, auction *d
 func (p *AuctionPublisher) PublishAuctionEndingSoon(ctx context.Context, auction *domain.Auction) error {
 	payload := events.AuctionEndingSoonPayload{
 		AuctionID: auction.ID,
-		EndTime:   auction.EndTime.Format("2006-01-02T15:04:05Z07:00"),
+		EndTime:   auction.EndTime.Format(time.RFC3339),
 	}
 	envelope := events.NewEnvelope(events.RoutingKeyAuctionEndingSoon, events.AuctionEventVersion, "", payload)
 	return p.base.Publish(ctx, events.RoutingKeyAuctionEndingSoon, envelope)

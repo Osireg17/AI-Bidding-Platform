@@ -2,6 +2,7 @@ package mq
 
 import (
 	"context"
+	"time"
 
 	"github.com/Osireg17/AI-Bidding-Platform/services/bid-service/internal/domain"
 	"github.com/Osireg17/AI-Bidding-Platform/shared/events"
@@ -52,7 +53,7 @@ func (p *BidPublisher) PublishBidRejected(ctx context.Context, bid *domain.Bid, 
 		BidAmount: bid.Amount,
 		BidID:     bid.ID,
 		Reason:    reason,
-		Timestamp: bid.CreatedAt.Format("2006-01-02T15:04:05Z07:00"), // RFC 3339
+		Timestamp: bid.CreatedAt.Format(time.RFC3339),
 	}
 
 	envelope := events.NewEnvelope(
