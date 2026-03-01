@@ -1,0 +1,92 @@
+{
+  "info": {
+    "name": "AI Bidding Platform",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "auction_service_url",
+      "value": "http://localhost:8081",
+      "type": "string"
+    },
+    {
+      "key": "bid_service_url",
+      "value": "http://localhost:8082",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auction Service",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": "{{auction_service_url}}/health"
+          }
+        },
+        {
+          "name": "Create Auction",
+          "request": {
+            "method": "POST",
+            "url": "{{auction_service_url}}/api/auctions",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Auction\",\n  \"description\": \"A test auction\",\n  \"start_price\": 10.0,\n  \"duration_sec\": 3600\n}"
+            }
+          }
+        },
+        {
+          "name": "List Auctions",
+          "request": {
+            "method": "GET",
+            "url": "{{auction_service_url}}/api/auctions"
+          }
+        },
+        {
+          "name": "Get Auction",
+          "request": {
+            "method": "GET",
+            "url": "{{auction_service_url}}/api/auctions/1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bid Service",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": "{{bid_service_url}}/health"
+          }
+        },
+        {
+          "name": "Place Bid",
+          "request": {
+            "method": "POST",
+            "url": "{{bid_service_url}}/api/bids",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"auction_id\": 1,\n  \"bot_id\": 123,\n  \"amount\": 100.50\n}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
