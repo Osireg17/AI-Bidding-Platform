@@ -2,9 +2,7 @@ package domain
 
 import "context"
 
-// AuctionRepository defines persistence operations for Auction aggregates.
 type AuctionRepository interface {
-	// Create persists a new auction. Returns error if it already exists.
 	Create(ctx context.Context, auction *Auction) error
 
 	// GetByID retrieves a single auction by its ID.
