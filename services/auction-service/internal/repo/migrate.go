@@ -9,19 +9,15 @@ import (
 )
 
 func RunMigrations(ctx context.Context, db *bun.DB) error {
-	_, err := db.NewCreateTable().
-		Model((*domain.Auction)(nil)).
-		IfNotExists().
-		Exec(ctx)
+	_, err := db.NewCreateTable().Model((*domain.Auction)(nil)).IfNotExists().Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create auctions table: %w", err)
 	}
 
-	// Create indexes for the scheduler queries.
 	indexes := []string{
-		"CREATE INDEX IF NOT EXISTS idx_auctions_status ON auctions (status)",
-		"CREATE INDEX IF NOT EXISTS idx_auctions_end_time ON auctions (end_time)",
-		"CREATE INDEX IF NOT EXISTS idx_auctions_status_end_time ON auctions (status, end_time)",
+		"CREATE INDEX IF NOT EXISTS idx_auctions_status ON auctions(status)",
+		"CREATE INDEX IF NOT EXISTS idx_auctions_end_time ON auctions(end_time)",
+		"CREATE INDEX IF NOT EXISTS idx_auctions_status_end_time ON auctions(status, end_time)",
 	}
 	for _, ddl := range indexes {
 		if _, err := db.ExecContext(ctx, ddl); err != nil {

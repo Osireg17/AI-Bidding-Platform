@@ -8,26 +8,19 @@ import (
 )
 
 func RunMigrations(ctx context.Context, db *bun.DB) error {
-	_, err := db.NewCreateTable().
-		Model((*domain.Bid)(nil)).
-		IfNotExists().
-		Exec(ctx)
+	_, err := db.NewCreateTable().Model((*domain.Bid)(nil)).IfNotExists().Exec(ctx)
 	if err != nil {
 		return err
 	}
-	_, err = db.NewCreateTable().
-		Model((*domain.AuctionSnapshot)(nil)).
-		IfNotExists().
-		Exec(ctx)
+	_, err = db.NewCreateTable().Model((*domain.AuctionSnapshot)(nil)).IfNotExists().Exec(ctx)
 	if err != nil {
 		return err
 	}
 
 	indexes := []string{
-		"CREATE INDEX IF NOT EXISTS idx_bids_auction_id ON bids (auction_id)",
+		"CREATE INDEX IF NOT EXISTS idx_bids_auction_id ON bids(auction_id)",
 		"CREATE INDEX IF NOT EXISTS idx_bids_auction_amount ON bids(auction_id, status, amount DESC)",
 	}
-
 	for _, ddl := range indexes {
 		if _, err := db.ExecContext(ctx, ddl); err != nil {
 			return err
