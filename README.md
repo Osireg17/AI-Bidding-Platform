@@ -122,5 +122,5 @@ make run-frontend
 
 ## Documentation
 
-- [Project Design Doc](docs/AI_Bidding_Platform_Docs.pdf) -- Full architecture, flows, and design decisions
+- [Project Design Doc](https://github.com/Osireg17/AI-Bidding-Platform/blob/main/docs/AI_Bidding_Platform.pdf) -- Full architecture, flows, and design decisions
 - [Coding Standards](claude/claude.local.md) -- Go conventions, patterns, and service rules
