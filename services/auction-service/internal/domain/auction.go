@@ -16,7 +16,6 @@ const (
 	StatusClosed     AuctionStatus = "closed"
 )
 
-// Auction represents a single auction in the system.
 type Auction struct {
 	bun.BaseModel `bun:"table:auctions,alias:a"`
 
@@ -33,7 +32,6 @@ type Auction struct {
 	UpdatedAt    time.Time     `bun:",nullzero,notnull,default:current_timestamp"`
 }
 
-// NewAuction creates a new Auction in Pending status.
 func NewAuction(title, description string, startPrice float64, duration time.Duration) (*Auction, error) {
 	if title == "" {
 		return nil, fmt.Errorf("%w: title is required", ErrInvalidAuctionData)
@@ -60,7 +58,6 @@ func NewAuction(title, description string, startPrice float64, duration time.Dur
 	}, nil
 }
 
-// Activate transitions a Pending auction to Active.
 func (a *Auction) Activate() error {
 	if a.Status != StatusPending {
 		return fmt.Errorf("%w: cannot activate auction in %s status", ErrInvalidStatus, a.Status)
@@ -70,11 +67,6 @@ func (a *Auction) Activate() error {
 	return nil
 }
 
-// === BEHAVIOR: MarkEndingSoon ===
-// Preconditions: status must be Active
-// Postconditions: status becomes EndingSoon, UpdatedAt refreshed
-
-// MarkEndingSoon transitions an Active auction to EndingSoon.
 func (a *Auction) MarkEndingSoon() error {
 	if a.Status != StatusActive {
 		return fmt.Errorf("%w: cannot mark ending soon from %s status", ErrInvalidStatus, a.Status)
@@ -84,12 +76,6 @@ func (a *Auction) MarkEndingSoon() error {
 	return nil
 }
 
-// === BEHAVIOR: Close ===
-// Preconditions: status must be Active or EndingSoon
-// Postconditions: status becomes Closed, winner set, UpdatedAt refreshed
-// Edge Cases: no winner (unsold auction) — winnerBotID and winningBid are zero values
-
-// Close transitions an Active or EndingSoon auction to Closed.
 func (a *Auction) Close(winnerBotID int64, winningBid float64) error {
 	if a.Status != StatusActive && a.Status != StatusEndingSoon {
 		return fmt.Errorf("%w: cannot close auction in %s status", ErrInvalidStatus, a.Status)
@@ -103,18 +89,10 @@ func (a *Auction) Close(winnerBotID int64, winningBid float64) error {
 	return nil
 }
 
-// === BEHAVIOR: IsExpired ===
-// Returns true if the current time is past EndTime and status is Active or EndingSoon.
-
-// IsExpired returns true if the auction's end time has passed and it hasn't been closed yet.
 func (a *Auction) IsExpired() bool {
 	return (a.Status == StatusActive || a.Status == StatusEndingSoon) && time.Now().UTC().After(a.EndTime)
 }
 
-// === BEHAVIOR: IsEndingSoon ===
-// Returns true if time remaining is within the threshold and status is Active.
-
-// IsEndingSoon returns true if the auction is active and within the ending-soon threshold.
 func (a *Auction) IsEndingSoon(threshold time.Duration) bool {
 	if a.Status != StatusActive {
 		return false
