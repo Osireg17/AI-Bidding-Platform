@@ -50,7 +50,7 @@ func (s *BidService) PlaceBid(ctx context.Context, auctionID int64, bidderID int
 		return nil, domain.ErrAuctionNotFound
 	}
 
-	if snapshot.Status != domain.AuctionStatusActive {
+	if !snapshot.IsActive() {
 		return nil, domain.ErrAuctionNotActive
 	}
 

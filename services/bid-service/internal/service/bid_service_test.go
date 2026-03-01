@@ -88,6 +88,34 @@ func TestPlaceBid_HappyPath_OutbidsExisting(t *testing.T) {
 	assert.Same(t, bid, publisher.PublishBidPlacedArgs[0].Bid)
 }
 
+// TestPlaceBid_HappyPath_EndingSoon: ending_soon auctions are still biddable per domain.IsActive().
+func TestPlaceBid_HappyPath_EndingSoon(t *testing.T) {
+	ctx := context.Background()
+	snapshot := testutil.CreateTestSnapshot(
+		testutil.WithSnapshotAuctionID(1),
+		testutil.WithSnapshotStartPrice(10.0),
+		testutil.WithSnapshotStatus(domain.AuctionStatusEndingSoon),
+	)
+	bidRepo := &testutil.MockBidRepository{GetHighestBidResult: 0}
+	snapshotRepo := &testutil.MockAuctionSnapshotRepository{GetByIDResult: snapshot}
+	lockMgr := &testutil.MockLockManager{}
+	publisher := &testutil.MockEventPublisher{}
+
+	svc := newTestService(bidRepo, snapshotRepo, lockMgr, publisher, t)
+
+	bid, err := svc.PlaceBid(ctx, 1, 100, 20.0)
+	require.NoError(t, err)
+	require.NotNil(t, bid)
+
+	expected := &domain.Bid{AuctionID: 1, BotID: 100, Amount: 20.0, Status: domain.StatusAccepted}
+	bid.CreatedAt = time.Time{}
+	assert.Equal(t, expected, bid)
+
+	assert.Equal(t, 1, bidRepo.CreateCalls)
+	assert.Equal(t, 1, publisher.PublishBidPlacedCalls)
+	assert.Equal(t, 0, publisher.PublishBidRejectedCalls)
+}
+
 // TestPlaceBid_LockAcquisitionFailed: AcquireLock fails — no further calls made.
 func TestPlaceBid_LockAcquisitionFailed(t *testing.T) {
 	ctx := context.Background()
