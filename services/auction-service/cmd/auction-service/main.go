@@ -21,26 +21,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// === CONTEXT ===
-// Purpose: Entry point for the auction-service. Wires all dependencies and starts the server.
-//
-// === BEHAVIOR: main ===
-// Logic:
-//   LOAD config from env vars
-//   INIT logger
-//   CONNECT to Postgres via Bun (pgdriver parses DATABASE_URL)
-//   RUN migrations (create tables + indexes)
-//   CONNECT to RabbitMQ (publisher)
-//   BUILD repository (implements AuctionRepository)
-//   BUILD publisher (implements EventPublisher)
-//   BUILD auction service (depends on repo + publisher)
-//   BUILD HTTP handler (depends on service)
-//   BUILD router (depends on handler)
-//   START scheduler in background goroutine
-//   START HTTP server
-//   WAIT for shutdown signal (SIGINT/SIGTERM)
-//   GRACEFUL SHUTDOWN: stop scheduler, close publisher, close DB, stop server
-
 func main() {
 	// Load configuration.
 	cfg, err := config.Load()
