@@ -13,7 +13,6 @@ type PostgresAuctionRepo struct {
 	db *bun.DB
 }
 
-// NewPostgresAuctionRepo creates a new repository with the given Bun database connection.
 func NewPostgresAuctionRepo(db *bun.DB) *PostgresAuctionRepo {
 	return &PostgresAuctionRepo{db: db}
 }
