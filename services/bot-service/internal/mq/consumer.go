@@ -149,7 +149,7 @@ func (c *BotEventConsumer) Start(ctx context.Context) error {
 				return errors.New("bot event consumer message channel closed")
 			}
 			if err := c.handleDelivery(ctx, amqpDelivery{Delivery: msg}); err != nil {
-				return err
+				c.logger.Error("failed to handle delivery, continuing", zap.Error(err))
 			}
 		case <-ctx.Done():
 			c.logger.Info("bot event consumer shutting down")
@@ -265,10 +265,16 @@ func (c *BotEventConsumer) fanOut(ctx context.Context, bots []BotEvaluator, ac a
 	}
 
 	successCount := 0
-	for range bots {
-		r := <-results
-		if r.success {
-			successCount++
+	remaining := len(bots)
+	for remaining > 0 {
+		select {
+		case r := <-results:
+			remaining--
+			if r.success {
+				successCount++
+			}
+		case <-ctx.Done():
+			return fmt.Errorf("fanOut cancelled: auction_id=%d trigger=%s", ac.AuctionID, ac.TriggerEvent)
 		}
 	}
 
