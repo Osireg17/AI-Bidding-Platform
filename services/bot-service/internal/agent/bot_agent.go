@@ -85,7 +85,7 @@ func NewBotAgent(ctx context.Context, bot *domain.Bot, geminiAPIKey string, bidC
 				zap.Float64("amount", args.Amount),
 				zap.Error(err),
 			)
-			return placeBidResult{Success: false, Message: err.Error()}, nil
+			return placeBidResult{Success: false, Message: err.Error()}, fmt.Errorf("place bid failed: %w", err)
 		}
 
 		botBid, err := domain.NewBotBid(bot.ID, args.AuctionID, args.Amount)
@@ -99,6 +99,7 @@ func NewBotAgent(ctx context.Context, bot *domain.Bot, geminiAPIKey string, bidC
 				zap.Int64("auction_id", args.AuctionID),
 				zap.Error(err),
 			)
+			return placeBidResult{Success: false, Message: "bid placed but failed to persist record"}, fmt.Errorf("failed to persist bot bid: %w", err)
 		}
 
 		logger.Info("bid placed",
