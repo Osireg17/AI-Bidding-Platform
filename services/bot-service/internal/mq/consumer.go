@@ -18,10 +18,18 @@ const botServiceQueueName = "bot.q"
 
 var errNonRetryable = errors.New("non-retryable consumer error")
 
+// BotEvaluator is the interface satisfied by *agent.BotAgent. It is extracted
+// here so that the consumer can be unit-tested without a live Gemini model.
+type BotEvaluator interface {
+	ID() int64
+	Name() string
+	Evaluate(ctx context.Context, ac agent.AuctionContext) error
+}
+
 type BotEventConsumer struct {
 	conn    *amqp.Connection
 	channel *amqp.Channel
-	bots    []*agent.BotAgent
+	bots    []BotEvaluator
 	logger  *zap.Logger
 }
 
@@ -41,7 +49,7 @@ func (d amqpDelivery) Body() []byte        { return d.Delivery.Body }
 func (d amqpDelivery) RoutingKey() string  { return d.Delivery.RoutingKey }
 func (d amqpDelivery) DeliveryTag() uint64 { return d.Delivery.DeliveryTag }
 
-func NewBotEventConsumer(url string, bots []*agent.BotAgent, logger *zap.Logger) (*BotEventConsumer, error) {
+func NewBotEventConsumer(url string, bots []BotEvaluator, logger *zap.Logger) (*BotEventConsumer, error) {
 	conn, err := amqp.Dial(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to RabbitMQ: %w", err)
@@ -195,11 +203,11 @@ func (c *BotEventConsumer) handleDelivery(ctx context.Context, msg delivery) err
 	return nil
 }
 
-func (c *BotEventConsumer) fanOut(ctx context.Context, bots []*agent.BotAgent, ac agent.AuctionContext) error {
+func (c *BotEventConsumer) fanOut(ctx context.Context, bots []BotEvaluator, ac agent.AuctionContext) error {
 	var wg sync.WaitGroup
 	for _, b := range bots {
 		wg.Add(1)
-		go func(bot *agent.BotAgent) {
+		go func(bot BotEvaluator) {
 			defer wg.Done()
 			if err := bot.Evaluate(ctx, ac); err != nil {
 				c.logger.Error("bot evaluation failed",
@@ -289,7 +297,7 @@ func (c *BotEventConsumer) handleBidPlaced(ctx context.Context, envelope events.
 	}
 
 	// bid.placed → all bots except the one that placed the bid (self-loop prevention)
-	var bots []*agent.BotAgent
+	var bots []BotEvaluator
 	for _, b := range c.bots {
 		if b.ID() != payload.BotID {
 			bots = append(bots, b)
@@ -313,8 +321,8 @@ func (c *BotEventConsumer) Close() error {
 }
 
 // botsWithIDs returns the subset of bots whose IDs match the provided list.
-func botsWithIDs(bots []*agent.BotAgent, ids ...int64) []*agent.BotAgent {
-	var result []*agent.BotAgent
+func botsWithIDs(bots []BotEvaluator, ids ...int64) []BotEvaluator {
+	var result []BotEvaluator
 	for _, b := range bots {
 		for _, id := range ids {
 			if b.ID() == id {
