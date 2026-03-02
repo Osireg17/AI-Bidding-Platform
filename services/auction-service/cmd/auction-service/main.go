@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/bidclient"
 	"github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/config"
 	auctionhttp "github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/http"
 	"github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/mq"
@@ -25,14 +26,20 @@ func main() {
 	// Load configuration.
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
+		_, err := fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
+		if err != nil {
+			return
+		}
 		os.Exit(1)
 	}
 
 	// Initialize logger.
 	logger, err := observability.NewLogger(cfg.LogLevel)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to init logger: %v\n", err)
+		_, err := fmt.Fprintf(os.Stderr, "failed to init logger: %v\n", err)
+		if err != nil {
+			return
+		}
 		os.Exit(1)
 	}
 	defer logger.Sync()
@@ -62,7 +69,8 @@ func main() {
 
 	// Build dependencies.
 	auctionRepo := repo.NewPostgresAuctionRepo(db)
-	auctionSvc := service.NewAuctionService(auctionRepo, publisher, logger)
+	bidClient := bidclient.NewBidServiceClient(cfg.BidServiceURL, logger)
+	auctionSvc := service.NewAuctionService(auctionRepo, publisher, bidClient, logger)
 	handler := auctionhttp.NewAuctionHandler(auctionSvc, logger)
 	router := auctionhttp.NewRouter(handler, logger)
 

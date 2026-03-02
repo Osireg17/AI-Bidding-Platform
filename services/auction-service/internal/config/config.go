@@ -11,6 +11,7 @@ type Config struct {
 	Port                 int
 	DatabaseURL          string
 	RabbitMQURL          string
+	BidServiceURL        string
 	LogLevel             string
 	EndingSoonThreshold  time.Duration
 	AuctionCheckInterval time.Duration
@@ -25,6 +26,7 @@ func Load() (*Config, error) {
 	}
 	dbURL := getEnv("DATABASE_URL", "")
 	rabbitURL := getEnv("RABBITMQ_URL", "")
+	bidServiceURL := getEnv("BID_SERVICE_URL", "http://localhost:8082")
 	logLevel := getEnv("LOG_LEVEL", "info")
 	endingSoonSec := getEnvInt("ENDING_SOON_THRESHOLD_SEC", 30)
 	checkIntervalSec := getEnvInt("AUCTION_CHECK_INTERVAL_SEC", 5)
@@ -40,6 +42,7 @@ func Load() (*Config, error) {
 		Port:                 port,
 		DatabaseURL:          dbURL,
 		RabbitMQURL:          rabbitURL,
+		BidServiceURL:        bidServiceURL,
 		LogLevel:             logLevel,
 		EndingSoonThreshold:  time.Duration(endingSoonSec) * time.Second,
 		AuctionCheckInterval: time.Duration(checkIntervalSec) * time.Second,

@@ -10,6 +10,10 @@ type BidRepository interface {
 
 	GetHighestBid(ctx context.Context, auctionID int64) (float64, error)
 
+	// GetWinner returns the bot_id and amount of the highest accepted bid.
+	// Returns (0, 0, nil) if no accepted bids exist.
+	GetWinner(ctx context.Context, auctionID int64) (botID int64, amount float64, err error)
+
 	ListByAuction(ctx context.Context, auctionID int64) ([]*Bid, error)
 }
 

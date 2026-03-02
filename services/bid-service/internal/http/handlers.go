@@ -3,6 +3,7 @@ package http
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/Osireg17/AI-Bidding-Platform/services/bid-service/internal/domain"
@@ -44,6 +45,44 @@ func toBidResponse(b *domain.Bid) bidResponse {
 		Status:    string(b.Status),
 		CreatedAt: b.CreatedAt.Format(time.RFC3339),
 	}
+}
+
+type highestBidResponse struct {
+	AuctionID int64   `json:"auction_id"`
+	BotID     int64   `json:"bot_id"`
+	Amount    float64 `json:"amount"`
+}
+
+// HandleGetHighestBid returns the winning bot and amount for an auction.
+// GET /api/bids/highest?auction_id=<id>
+// Returns 200 with { bot_id: 0, amount: 0 } when no bids have been placed.
+func (h *BidHandler) HandleGetHighestBid(c *gin.Context) {
+	raw := c.Query("auction_id")
+	if raw == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "auction_id query parameter is required"})
+		return
+	}
+	auctionID, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || auctionID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "auction_id must be a positive integer"})
+		return
+	}
+
+	botID, amount, err := h.svc.GetWinner(c.Request.Context(), auctionID)
+	if err != nil {
+		h.logger.Error("failed to get winner",
+			zap.Int64("auction_id", auctionID),
+			zap.Error(err),
+		)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	c.JSON(http.StatusOK, highestBidResponse{
+		AuctionID: auctionID,
+		BotID:     botID,
+		Amount:    amount,
+	})
 }
 
 func (h *BidHandler) HandlePlaceBid(c *gin.Context) {

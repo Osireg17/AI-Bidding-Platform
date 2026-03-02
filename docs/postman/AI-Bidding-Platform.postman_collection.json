@@ -13,6 +13,11 @@
       "key": "bid_service_url",
       "value": "http://localhost:8082",
       "type": "string"
+    },
+    {
+      "key": "bot_service_url",
+      "value": "http://localhost:8083",
+      "type": "string"
     }
   ],
   "item": [
@@ -84,6 +89,60 @@
               "mode": "raw",
               "raw": "{\n  \"auction_id\": 1,\n  \"bot_id\": 123,\n  \"amount\": 100.50\n}"
             }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bot Service - End-to-End Flow",
+      "description": "The bot-service has no HTTP endpoints — it reacts to RabbitMQ events.\nUse these requests to trigger the full flow and observe bot behaviour.\n\nFlow:\n1. Create an auction → fires auction.created → Alice, Victor, Charlie evaluate and may bid\n2. Check bids placed by bots via the Bid Service\n3. Place a manual bid → fires bid.placed → all 4 bots (minus the bidder) evaluate\n4. Trigger ending_soon by waiting or using the auction scheduler",
+      "item": [
+        {
+          "name": "1. Create Auction (triggers auction.created)",
+          "request": {
+            "method": "POST",
+            "url": "{{auction_service_url}}/api/auctions",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Vintage Watch\",\n  \"description\": \"A rare 1960s Swiss watch in excellent condition\",\n  \"start_price\": 100.0,\n  \"duration_sec\": 300\n}"
+            }
+          }
+        },
+        {
+          "name": "2. List Bids for Auction (observe bot bids)",
+          "request": {
+            "method": "GET",
+            "url": "{{bid_service_url}}/api/bids?auction_id=1"
+          }
+        },
+        {
+          "name": "3. Place Manual Bid as Bot 1 (triggers bid.placed → Steve, Victor, Charlie evaluate)",
+          "request": {
+            "method": "POST",
+            "url": "{{bid_service_url}}/api/bids",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"auction_id\": 1,\n  \"bot_id\": 1,\n  \"amount\": 125.00\n}"
+            }
+          }
+        },
+        {
+          "name": "4. Get Auction (check status / current_price)",
+          "request": {
+            "method": "GET",
+            "url": "{{auction_service_url}}/api/auctions/1"
           }
         }
       ]

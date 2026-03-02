@@ -29,7 +29,7 @@ func NewRouter(handler *BidHandler, logger *zap.Logger) *gin.Engine {
 	api := r.Group("/api")
 	{
 		api.POST("/bids", handler.HandlePlaceBid)
-
+		api.GET("/bids/highest", handler.HandleGetHighestBid)
 	}
 	return r
 }

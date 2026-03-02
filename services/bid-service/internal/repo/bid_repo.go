@@ -29,6 +29,24 @@ func (r *PostgresBidRepo) GetHighestBid(ctx context.Context, auctionID int64) (f
 	return highestBid, err
 }
 
+func (r *PostgresBidRepo) GetWinner(ctx context.Context, auctionID int64) (int64, float64, error) {
+	var result struct {
+		BotID  int64   `bun:"bot_id"`
+		Amount float64 `bun:"amount"`
+	}
+	err := r.db.NewRaw(`
+		SELECT bot_id, amount
+		FROM bids
+		WHERE auction_id = ? AND status = 'accepted'
+		ORDER BY amount DESC
+		LIMIT 1`, auctionID).Scan(ctx, &result)
+	if err != nil {
+		// No rows — no bids placed yet.
+		return 0, 0, nil
+	}
+	return result.BotID, result.Amount, nil
+}
+
 func (r *PostgresBidRepo) ListByAuction(ctx context.Context, auctionID int64) ([]*domain.Bid, error) {
 	var bids []*domain.Bid
 	err := r.db.NewSelect().Model(&bids).
