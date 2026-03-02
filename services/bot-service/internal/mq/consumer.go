@@ -162,7 +162,7 @@ func (c *BotEventConsumer) handleDelivery(ctx context.Context, msg delivery) err
 	case events.RoutingKeyAuctionEndingSoon:
 		handleErr = c.handleAuctionEndingSoon(ctx, envelope)
 	case events.RoutingKeyAuctionEnded:
-		handleErr = c.handleAuctionEnded(ctx, envelope)
+		handleErr = c.handleAuctionEnded(envelope)
 	case events.RoutingKeyBidPlaced:
 		handleErr = c.handleBidPlaced(ctx, envelope)
 	default:
@@ -195,8 +195,6 @@ func (c *BotEventConsumer) handleDelivery(ctx context.Context, msg delivery) err
 	return nil
 }
 
-// fanOut calls Evaluate on each bot in parallel and waits for all to finish.
-// Returns a non-nil error only if every bot fails (to avoid requeueing on partial failure).
 func (c *BotEventConsumer) fanOut(ctx context.Context, bots []*agent.BotAgent, ac agent.AuctionContext) error {
 	var wg sync.WaitGroup
 	for _, b := range bots {
@@ -263,7 +261,7 @@ func (c *BotEventConsumer) handleAuctionEndingSoon(ctx context.Context, envelope
 	return c.fanOut(ctx, c.bots, ac)
 }
 
-func (c *BotEventConsumer) handleAuctionEnded(ctx context.Context, envelope events.Envelope) error {
+func (c *BotEventConsumer) handleAuctionEnded(envelope events.Envelope) error {
 	payload, err := reUnmarshalPayload[events.AuctionEndedPayload](envelope.Payload)
 	if err != nil {
 		return fmt.Errorf("%w: unmarshal AuctionEndedPayload: %v", errNonRetryable, err)
