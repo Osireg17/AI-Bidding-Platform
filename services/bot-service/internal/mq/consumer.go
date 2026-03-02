@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/Osireg17/AI-Bidding-Platform/services/bot-service/internal/agent"
@@ -16,7 +15,16 @@ import (
 
 const botServiceQueueName = "bot.q"
 
-var errNonRetryable = errors.New("non-retryable consumer error")
+// fanOut retry policy.
+const (
+	maxBotAttempts    = 3
+	botRetryBaseDelay = 200 * time.Millisecond
+)
+
+var (
+	errNonRetryable  = errors.New("non-retryable consumer error")
+	errAllBotsFailed = errors.New("all bots failed evaluation")
+)
 
 // BotEvaluator is the interface satisfied by *agent.BotAgent. It is extracted
 // here so that the consumer can be unit-tested without a live Gemini model.
@@ -204,21 +212,69 @@ func (c *BotEventConsumer) handleDelivery(ctx context.Context, msg delivery) err
 }
 
 func (c *BotEventConsumer) fanOut(ctx context.Context, bots []BotEvaluator, ac agent.AuctionContext) error {
-	var wg sync.WaitGroup
+	if len(bots) == 0 {
+		return nil
+	}
+
+	type botResult struct {
+		name    string
+		success bool
+	}
+
+	results := make(chan botResult, len(bots))
+
 	for _, b := range bots {
-		wg.Add(1)
 		go func(bot BotEvaluator) {
-			defer wg.Done()
-			if err := bot.Evaluate(ctx, ac); err != nil {
-				c.logger.Error("bot evaluation failed",
+			var lastErr error
+			for attempt := 1; attempt <= maxBotAttempts; attempt++ {
+				lastErr = bot.Evaluate(ctx, ac)
+				if lastErr == nil {
+					results <- botResult{name: bot.Name(), success: true}
+					return
+				}
+
+				c.logger.Warn("bot evaluation failed, will retry",
 					zap.String("bot", bot.Name()),
 					zap.Int64("auction_id", ac.AuctionID),
-					zap.Error(err),
+					zap.String("trigger", ac.TriggerEvent),
+					zap.Int("attempt", attempt),
+					zap.Int("max_attempts", maxBotAttempts),
+					zap.Error(lastErr),
 				)
+
+				if attempt < maxBotAttempts {
+					delay := botRetryBaseDelay * (1 << (attempt - 1)) // 200ms, 400ms
+					select {
+					case <-time.After(delay):
+					case <-ctx.Done():
+						results <- botResult{name: bot.Name(), success: false}
+						return
+					}
+				}
 			}
+
+			c.logger.Error("bot evaluation exhausted all attempts",
+				zap.String("bot", bot.Name()),
+				zap.Int64("auction_id", ac.AuctionID),
+				zap.String("trigger", ac.TriggerEvent),
+				zap.Int("attempts", maxBotAttempts),
+				zap.Error(lastErr),
+			)
+			results <- botResult{name: bot.Name(), success: false}
 		}(b)
 	}
-	wg.Wait()
+
+	successCount := 0
+	for range bots {
+		r := <-results
+		if r.success {
+			successCount++
+		}
+	}
+
+	if successCount == 0 {
+		return fmt.Errorf("%w: auction_id=%d trigger=%s", errAllBotsFailed, ac.AuctionID, ac.TriggerEvent)
+	}
 	return nil
 }
 

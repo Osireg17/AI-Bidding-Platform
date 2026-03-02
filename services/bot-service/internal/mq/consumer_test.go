@@ -19,13 +19,13 @@ import (
 // Fakes
 // ---------------------------------------------------------------------------
 
-// fakeBot is a test double for BotEvaluator.
 type fakeBot struct {
-	id            int64
-	name          string
-	evaluateCalls []agent.AuctionContext
-	errToReturn   error
-	mu            sync.Mutex
+	id          int64
+	name        string
+	mu          sync.Mutex
+	calls       []agent.AuctionContext
+	errToReturn error
+	failTimes   int // -1 = always fail; 0 = always succeed; N = fail first N calls
 }
 
 func (f *fakeBot) ID() int64    { return f.id }
@@ -33,24 +33,31 @@ func (f *fakeBot) Name() string { return f.name }
 
 func (f *fakeBot) Evaluate(_ context.Context, ac agent.AuctionContext) error {
 	f.mu.Lock()
-	f.evaluateCalls = append(f.evaluateCalls, ac)
-	f.mu.Unlock()
-	return f.errToReturn
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, ac)
+	if f.failTimes == -1 {
+		return f.errToReturn
+	}
+	if f.failTimes > 0 {
+		f.failTimes--
+		return f.errToReturn
+	}
+	return nil
 }
 
 func (f *fakeBot) callCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return len(f.evaluateCalls)
+	return len(f.calls)
 }
 
 func (f *fakeBot) lastCall() agent.AuctionContext {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.evaluateCalls[len(f.evaluateCalls)-1]
+	return f.calls[len(f.calls)-1]
 }
 
-// fakeDelivery implements the delivery interface used by handleDelivery.
+// fakeDelivery implements the delivery interface.
 type fakeDelivery struct {
 	body        []byte
 	routingKey  string
@@ -63,12 +70,7 @@ type fakeDelivery struct {
 func (d *fakeDelivery) Body() []byte        { return d.body }
 func (d *fakeDelivery) RoutingKey() string  { return d.routingKey }
 func (d *fakeDelivery) DeliveryTag() uint64 { return d.deliveryTag }
-
-func (d *fakeDelivery) Ack(_ bool) error {
-	d.ackCalls++
-	return nil
-}
-
+func (d *fakeDelivery) Ack(_ bool) error    { d.ackCalls++; return nil }
 func (d *fakeDelivery) Nack(_ bool, requeue bool) error {
 	d.nackCalls++
 	d.nackRequeue = requeue
@@ -162,16 +164,12 @@ func TestHandleDelivery_UnknownEventType_IsAckedAndIgnored(t *testing.T) {
 func TestHandleDelivery_AuctionCreated_CallsAliceVictorCharlie(t *testing.T) {
 	bots := allFakeBots()
 	consumer := newTestConsumer(toBotEvaluators(bots))
-	payload := makeAuctionCreatedPayload()
-	d := makeDelivery(t, events.RoutingKeyAuctionCreated, payload)
+	d := makeDelivery(t, events.RoutingKeyAuctionCreated, makeAuctionCreatedPayload())
 
-	err := consumer.handleDelivery(context.Background(), d)
-	require.NoError(t, err)
+	require.NoError(t, consumer.handleDelivery(context.Background(), d))
 
 	assert.Equal(t, 1, d.ackCalls)
 	assert.Equal(t, 0, d.nackCalls)
-
-	// IDs 1 (Alice), 3 (Victor), 4 (Charlie) must be invoked; 2 (Steve) must not.
 	assert.Equal(t, 1, bots[0].callCount(), "Alice should be called")
 	assert.Equal(t, 0, bots[1].callCount(), "Steve should NOT be called")
 	assert.Equal(t, 1, bots[2].callCount(), "Victor should be called")
@@ -208,8 +206,7 @@ func TestHandleDelivery_AuctionCreated_InvalidEndTime_IsNonRetryable(t *testing.
 	}
 	d := makeDelivery(t, events.RoutingKeyAuctionCreated, payload)
 
-	err := consumer.handleDelivery(context.Background(), d)
-	require.NoError(t, err)
+	require.NoError(t, consumer.handleDelivery(context.Background(), d))
 
 	// Non-retryable → acked and dropped
 	assert.Equal(t, 1, d.ackCalls)
@@ -230,10 +227,10 @@ func TestHandleDelivery_AuctionEndingSoon_CallsAllBots(t *testing.T) {
 	}
 	d := makeDelivery(t, events.RoutingKeyAuctionEndingSoon, payload)
 
-	err := consumer.handleDelivery(context.Background(), d)
-	require.NoError(t, err)
+	require.NoError(t, consumer.handleDelivery(context.Background(), d))
 
 	assert.Equal(t, 1, d.ackCalls)
+	assert.Equal(t, 0, d.nackCalls)
 	for _, b := range bots {
 		assert.Equal(t, 1, b.callCount(), "all bots must be called for ending_soon")
 	}
@@ -258,6 +255,10 @@ func TestHandleDelivery_AuctionEndingSoon_ContextPassedCorrectly(t *testing.T) {
 	assert.WithinDuration(t, endTime, ac.EndTime, time.Second)
 }
 
+// ---------------------------------------------------------------------------
+// handleDelivery — auction.ended
+// ---------------------------------------------------------------------------
+
 func TestHandleDelivery_AuctionEnded_IsLoggedAndAcked(t *testing.T) {
 	bots := allFakeBots()
 	consumer := newTestConsumer(toBotEvaluators(bots))
@@ -271,8 +272,7 @@ func TestHandleDelivery_AuctionEnded_IsLoggedAndAcked(t *testing.T) {
 	}
 	d := makeDelivery(t, events.RoutingKeyAuctionEnded, payload)
 
-	err := consumer.handleDelivery(context.Background(), d)
-	require.NoError(t, err)
+	require.NoError(t, consumer.handleDelivery(context.Background(), d))
 
 	assert.Equal(t, 1, d.ackCalls)
 	assert.Equal(t, 0, d.nackCalls)
@@ -282,24 +282,22 @@ func TestHandleDelivery_AuctionEnded_IsLoggedAndAcked(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// handleDelivery — bid.placed
+// ---------------------------------------------------------------------------
+
 func TestHandleDelivery_BidPlaced_ExcludesBiddingBot(t *testing.T) {
 	bots := allFakeBots()
 	consumer := newTestConsumer(toBotEvaluators(bots))
 
 	// Steve (id=2) placed the bid — Steve must NOT receive the event.
-	payload := events.BidPlacedPayload{
-		AuctionID: 40,
-		BotID:     2,
-		BidAmount: 120.0,
-	}
+	payload := events.BidPlacedPayload{AuctionID: 40, BotID: 2, BidAmount: 120.0}
 	d := makeDelivery(t, events.RoutingKeyBidPlaced, payload)
 
-	err := consumer.handleDelivery(context.Background(), d)
-	require.NoError(t, err)
+	require.NoError(t, consumer.handleDelivery(context.Background(), d))
 
 	assert.Equal(t, 1, d.ackCalls)
 	assert.Equal(t, 0, d.nackCalls)
-
 	assert.Equal(t, 1, bots[0].callCount(), "Alice should be called")
 	assert.Equal(t, 0, bots[1].callCount(), "Steve (bidder) must be excluded")
 	assert.Equal(t, 1, bots[2].callCount(), "Victor should be called")
@@ -310,11 +308,7 @@ func TestHandleDelivery_BidPlaced_ContextPassedCorrectly(t *testing.T) {
 	bots := allFakeBots()
 	consumer := newTestConsumer(toBotEvaluators(bots))
 
-	payload := events.BidPlacedPayload{
-		AuctionID: 40,
-		BotID:     2,
-		BidAmount: 120.0,
-	}
+	payload := events.BidPlacedPayload{AuctionID: 40, BotID: 2, BidAmount: 120.0}
 	d := makeDelivery(t, events.RoutingKeyBidPlaced, payload)
 
 	require.NoError(t, consumer.handleDelivery(context.Background(), d))
@@ -330,11 +324,7 @@ func TestHandleDelivery_BidPlaced_AllBotsIncludedWhenBotIDIsZero(t *testing.T) {
 	consumer := newTestConsumer(toBotEvaluators(bots))
 
 	// BotID 0 matches no known bot — all should receive the event.
-	payload := events.BidPlacedPayload{
-		AuctionID: 50,
-		BotID:     0,
-		BidAmount: 75.0,
-	}
+	payload := events.BidPlacedPayload{AuctionID: 50, BotID: 0, BidAmount: 75.0}
 	d := makeDelivery(t, events.RoutingKeyBidPlaced, payload)
 
 	require.NoError(t, consumer.handleDelivery(context.Background(), d))
@@ -345,23 +335,118 @@ func TestHandleDelivery_BidPlaced_AllBotsIncludedWhenBotIDIsZero(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// handleDelivery — retryable vs non-retryable errors
+// fanOut — retry & failure propagation
 // ---------------------------------------------------------------------------
 
-func TestHandleDelivery_BotEvaluateError_DoesNotNack(t *testing.T) {
-	// Evaluate errors are logged and swallowed by fanOut; the message is still acked.
-	bots := allFakeBots()
-	bots[0].errToReturn = errors.New("model timeout")
+func TestFanOut_TransientFailure_RetriesAndSucceeds(t *testing.T) {
+	transient := &fakeBot{
+		id:          1,
+		name:        "Aggressive Alice",
+		errToReturn: errors.New("model timeout"),
+		failTimes:   maxBotAttempts - 1, // fail first 2, succeed on 3rd
+	}
+	consumer := newTestConsumer([]BotEvaluator{transient})
+
+	payload := makeAuctionCreatedPayload()
+	d := makeDelivery(t, events.RoutingKeyAuctionCreated, payload)
+
+	require.NoError(t, consumer.handleDelivery(context.Background(), d))
+
+	assert.Equal(t, 1, d.ackCalls, "message must be ACKed after eventual success")
+	assert.Equal(t, 0, d.nackCalls)
+	assert.Equal(t, maxBotAttempts, transient.callCount(), "bot must be called exactly maxBotAttempts times")
+}
+
+func TestFanOut_AllBotsAlwaysFail_NacksMessage(t *testing.T) {
+	persistentErr := errors.New("service unavailable")
+	bots := []*fakeBot{
+		{id: 1, name: "Alice", errToReturn: persistentErr, failTimes: -1},
+		{id: 3, name: "Victor", errToReturn: persistentErr, failTimes: -1},
+		{id: 4, name: "Charlie", errToReturn: persistentErr, failTimes: -1},
+	}
 	consumer := newTestConsumer(toBotEvaluators(bots))
 
 	payload := makeAuctionCreatedPayload()
 	d := makeDelivery(t, events.RoutingKeyAuctionCreated, payload)
 
-	err := consumer.handleDelivery(context.Background(), d)
-	require.NoError(t, err)
+	require.NoError(t, consumer.handleDelivery(context.Background(), d))
 
+	assert.Equal(t, 0, d.ackCalls, "message must NOT be acked when all bots fail")
+	assert.Equal(t, 1, d.nackCalls, "message must be NACKed for requeue")
+	assert.True(t, d.nackRequeue, "message must be requeued")
+
+	// Each bot should have been attempted maxBotAttempts times.
+	for _, b := range bots {
+		assert.Equal(t, maxBotAttempts, b.callCount(),
+			"bot %s should be retried %d times", b.name, maxBotAttempts)
+	}
+}
+
+func TestFanOut_PartialSuccess_Acks(t *testing.T) {
+	persistentErr := errors.New("service unavailable")
+	alice := &fakeBot{id: 1, name: "Alice"}                                              // always succeeds
+	victor := &fakeBot{id: 3, name: "Victor", errToReturn: persistentErr, failTimes: -1} // always fails
+	charlie := &fakeBot{id: 4, name: "Charlie", errToReturn: persistentErr, failTimes: -1}
+
+	consumer := newTestConsumer([]BotEvaluator{alice, victor, charlie})
+
+	payload := makeAuctionCreatedPayload()
+	d := makeDelivery(t, events.RoutingKeyAuctionCreated, payload)
+
+	require.NoError(t, consumer.handleDelivery(context.Background(), d))
+
+	assert.Equal(t, 1, d.ackCalls, "partial success must still ACK")
+	assert.Equal(t, 0, d.nackCalls)
+	assert.Equal(t, 1, alice.callCount())
+	assert.Equal(t, maxBotAttempts, victor.callCount())
+	assert.Equal(t, maxBotAttempts, charlie.callCount())
+}
+
+func TestFanOut_EmptyBotList_Acks(t *testing.T) {
+	consumer := newTestConsumer(nil)
+
+	// auction.ending_soon → c.bots (empty)
+	payload := events.AuctionEndingSoonPayload{
+		AuctionID: 20,
+		EndTime:   time.Now().UTC().Add(5 * time.Minute).Format(time.RFC3339),
+	}
+	d := makeDelivery(t, events.RoutingKeyAuctionEndingSoon, payload)
+
+	require.NoError(t, consumer.handleDelivery(context.Background(), d))
 	assert.Equal(t, 1, d.ackCalls)
 	assert.Equal(t, 0, d.nackCalls)
+}
+
+func TestFanOut_ContextCancelledDuringBackoff_DoesNotBlock(t *testing.T) {
+	slow := &fakeBot{
+		id:          1,
+		name:        "Alice",
+		errToReturn: errors.New("slow model"),
+		failTimes:   -1, // always fail so it would hit the backoff sleep
+	}
+	consumer := newTestConsumer([]BotEvaluator{slow})
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Cancel after the first Evaluate call returns — this happens before the
+	// first backoff sleep, so the goroutine should exit quickly.
+	go func() {
+		for slow.callCount() < 1 {
+			time.Sleep(time.Millisecond)
+		}
+		cancel()
+	}()
+
+	start := time.Now()
+	// fanOut itself — we call it directly to avoid AMQP ACK/NACK machinery.
+	ac := agent.AuctionContext{AuctionID: 99, TriggerEvent: events.RoutingKeyAuctionCreated}
+	_ = consumer.fanOut(ctx, []BotEvaluator{slow}, ac)
+	elapsed := time.Since(start)
+
+	// The full backoff for 3 attempts would be 200ms + 400ms = 600ms.
+	// With context cancellation after the first call it should be well under that.
+	assert.Less(t, elapsed, 500*time.Millisecond,
+		"fanOut must not block for full backoff when context is cancelled")
 }
 
 // ---------------------------------------------------------------------------
@@ -378,20 +463,17 @@ func TestBotsWithIDs_ReturnsMatchingSubset(t *testing.T) {
 }
 
 func TestBotsWithIDs_NoneMatch_ReturnsEmpty(t *testing.T) {
-	bots := toBotEvaluators(allFakeBots())
-	result := botsWithIDs(bots, 99, 100)
+	result := botsWithIDs(toBotEvaluators(allFakeBots()), 99, 100)
 	assert.Empty(t, result)
 }
 
 func TestBotsWithIDs_AllMatch(t *testing.T) {
-	bots := toBotEvaluators(allFakeBots())
-	result := botsWithIDs(bots, 1, 2, 3, 4)
+	result := botsWithIDs(toBotEvaluators(allFakeBots()), 1, 2, 3, 4)
 	assert.Len(t, result, 4)
 }
 
 func TestBotsWithIDs_EmptyInput(t *testing.T) {
-	result := botsWithIDs(nil, 1, 2)
-	assert.Empty(t, result)
+	assert.Empty(t, botsWithIDs(nil, 1, 2))
 }
 
 // ---------------------------------------------------------------------------
@@ -408,7 +490,6 @@ func TestReUnmarshalPayload_AuctionCreated(t *testing.T) {
 		"start_time":  now.Format(time.RFC3339),
 		"end_time":    now.Add(24 * time.Hour).Format(time.RFC3339),
 	}
-
 	result, err := reUnmarshalPayload[events.AuctionCreatedPayload](raw)
 	require.NoError(t, err)
 	assert.Equal(t, int64(7), result.AuctionID)
@@ -422,7 +503,6 @@ func TestReUnmarshalPayload_BidPlaced(t *testing.T) {
 		"bot_id":     float64(2),
 		"bid_amount": float64(250.0),
 	}
-
 	result, err := reUnmarshalPayload[events.BidPlacedPayload](raw)
 	require.NoError(t, err)
 	assert.Equal(t, int64(8), result.AuctionID)
@@ -431,13 +511,12 @@ func TestReUnmarshalPayload_BidPlaced(t *testing.T) {
 }
 
 func TestReUnmarshalPayload_InvalidPayload_ReturnsError(t *testing.T) {
-	// A channel is not JSON-serialisable → marshal step fails.
 	_, err := reUnmarshalPayload[events.AuctionCreatedPayload](make(chan int))
 	require.Error(t, err)
 }
 
 // ---------------------------------------------------------------------------
-// Compile-time guard
+// Compile-time interface guard
 // ---------------------------------------------------------------------------
 
 var _ BotEvaluator = (*fakeBot)(nil)
