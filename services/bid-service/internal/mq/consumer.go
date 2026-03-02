@@ -273,9 +273,6 @@ func (c *AuctionEventConsumer) Close() error {
 	return nil
 }
 
-// reUnmarshalPayload is a helper that re-marshals envelope.Payload (a map[string]any
-// after JSON decode) into the target struct T.
-// Usage: payload, err := reUnmarshalPayload[events.AuctionCreatedPayload](envelope.Payload)
 func reUnmarshalPayload[T any](raw any) (T, error) {
 	var result T
 	b, err := json.Marshal(raw)

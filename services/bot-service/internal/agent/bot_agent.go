@@ -65,6 +65,9 @@ price is less than 70% of your estimated value. Bid at 80% of your estimate.`,
 50% above the start price.`,
 }
 
+func (ba *BotAgent) ID() int64    { return ba.bot.ID }
+func (ba *BotAgent) Name() string { return ba.bot.Name }
+
 func NewBotAgent(ctx context.Context, bot *domain.Bot, geminiAPIKey string, bidClient *bidclient.BidServiceClient, repo domain.BotBidRepository, logger *zap.Logger) (*BotAgent, error) {
 	ba := &BotAgent{
 		bot:       bot,
