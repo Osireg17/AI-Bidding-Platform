@@ -16,7 +16,7 @@ func TestCreateAuction_HappyPath(t *testing.T) {
 	publisher := &testutil.MockEventPublisher{}
 	logger := testutil.NewTestLogger(t)
 
-	svc := NewAuctionService(repo, publisher, logger)
+	svc := NewAuctionService(repo, publisher, nil, logger)
 
 	title := "Auction 1"
 	description := "Test auction"
@@ -79,7 +79,7 @@ func TestCreateAuction_RepoError(t *testing.T) {
 	publisher := &testutil.MockEventPublisher{}
 	logger := testutil.NewTestLogger(t)
 
-	svc := NewAuctionService(repo, publisher, logger)
+	svc := NewAuctionService(repo, publisher, nil, logger)
 
 	_, err := svc.CreateAuction(ctx, "Title", "Description", 10.0, 5*time.Minute)
 	if err == nil {
@@ -104,7 +104,7 @@ func TestCreateAuction_InvalidInput(t *testing.T) {
 	publisher := &testutil.MockEventPublisher{}
 	logger := testutil.NewTestLogger(t)
 
-	svc := NewAuctionService(repo, publisher, logger)
+	svc := NewAuctionService(repo, publisher, nil, logger)
 
 	_, err := svc.CreateAuction(ctx, "", "Description", 10.0, 5*time.Minute)
 	if err == nil {
@@ -148,7 +148,7 @@ func TestGetAuction(t *testing.T) {
 	publisher := &testutil.MockEventPublisher{}
 	logger := testutil.NewTestLogger(t)
 
-	svc := NewAuctionService(repo, publisher, logger)
+	svc := NewAuctionService(repo, publisher, nil, logger)
 
 	auction, err := svc.GetAuction(ctx, 1)
 	if err != nil {
@@ -182,7 +182,7 @@ func TestGetAuction_NilResult(t *testing.T) {
 	publisher := &testutil.MockEventPublisher{}
 	logger := testutil.NewTestLogger(t)
 
-	svc := NewAuctionService(repo, publisher, logger)
+	svc := NewAuctionService(repo, publisher, nil, logger)
 
 	auction, err := svc.GetAuction(ctx, 1)
 	if err != nil {
@@ -223,7 +223,7 @@ func TestListAuctions(t *testing.T) {
 	publisher := &testutil.MockEventPublisher{}
 	logger := testutil.NewTestLogger(t)
 
-	svc := NewAuctionService(repo, publisher, logger)
+	svc := NewAuctionService(repo, publisher, nil, logger)
 
 	auctions, err := svc.ListAuctions(ctx)
 	if err != nil {
@@ -257,7 +257,7 @@ func TestListAuctions_Empty(t *testing.T) {
 	publisher := &testutil.MockEventPublisher{}
 	logger := testutil.NewTestLogger(t)
 
-	svc := NewAuctionService(repo, publisher, logger)
+	svc := NewAuctionService(repo, publisher, nil, logger)
 
 	auctions, err := svc.ListAuctions(ctx)
 	if err != nil {
@@ -280,7 +280,7 @@ func TestListAuctions_MultipleCalls(t *testing.T) {
 	publisher := &testutil.MockEventPublisher{}
 	logger := testutil.NewTestLogger(t)
 
-	svc := NewAuctionService(repo, publisher, logger)
+	svc := NewAuctionService(repo, publisher, nil, logger)
 
 	for i := range [3]int{} {
 		auctions, err := svc.ListAuctions(ctx)
@@ -317,7 +317,7 @@ func TestProcessExpiredAuctions(t *testing.T) {
 	publisher := &testutil.MockEventPublisher{}
 	logger := testutil.NewTestLogger(t)
 
-	svc := NewAuctionService(repo, publisher, logger)
+	svc := NewAuctionService(repo, publisher, nil, logger)
 
 	err := svc.ProcessExpiredAuctions(ctx)
 	if err != nil {
@@ -351,7 +351,7 @@ func TestProcessExpiredAuctions_RepoError(t *testing.T) {
 	publisher := &testutil.MockEventPublisher{}
 	logger := testutil.NewTestLogger(t)
 
-	svc := NewAuctionService(repo, publisher, logger)
+	svc := NewAuctionService(repo, publisher, nil, logger)
 
 	err := svc.ProcessExpiredAuctions(ctx)
 	if err == nil {
@@ -392,7 +392,7 @@ func TestProcessEndingSoonAuctions(t *testing.T) {
 	publisher := &testutil.MockEventPublisher{}
 	logger := testutil.NewTestLogger(t)
 
-	svc := NewAuctionService(repo, publisher, logger)
+	svc := NewAuctionService(repo, publisher, nil, logger)
 
 	err := svc.ProcessEndingSoonAuctions(ctx, 60)
 	if err != nil {
@@ -431,7 +431,7 @@ func TestProcessEndingSoonAuctions_RepoError(t *testing.T) {
 	publisher := &testutil.MockEventPublisher{}
 	logger := testutil.NewTestLogger(t)
 
-	svc := NewAuctionService(repo, publisher, logger)
+	svc := NewAuctionService(repo, publisher, nil, logger)
 
 	err := svc.ProcessEndingSoonAuctions(ctx, 60)
 	if err == nil {
@@ -472,7 +472,7 @@ func TestProcessEndingSoonAuctions_UpdateError(t *testing.T) {
 	publisher := &testutil.MockEventPublisher{}
 	logger := testutil.NewTestLogger(t)
 
-	svc := NewAuctionService(repo, publisher, logger)
+	svc := NewAuctionService(repo, publisher, nil, logger)
 
 	err := svc.ProcessEndingSoonAuctions(ctx, 60)
 	if err != nil {

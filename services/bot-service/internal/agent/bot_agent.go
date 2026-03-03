@@ -48,21 +48,26 @@ type placeBidResult struct {
 	Message string `json:"message"`
 }
 
+const bidRule = `
+CRITICAL RULE: Any bid you place MUST be strictly greater than the Highest Bid shown in the auction context.
+If Highest Bid is 0, your bid must exceed the Start Price.
+Never place a bid equal to or lower than the Highest Bid — it will always be rejected.`
+
 var personalityInstructions = map[domain.BotPersonality]string{
 	domain.PersonalityAggressive: `You are Aggressive Alice. You love winning auctions. When you see a new auction,
-always bid approximately 25% above the start price immediately. Be bold.`,
+always bid approximately 25% above the current highest bid immediately. Be bold.` + bidRule,
 
 	domain.PersonalitySniper: `You are Sniper Steve. You wait for the perfect moment. Only bid when an auction
-is ending soon or when you have been outbid. Bid the minimum amount needed to
-take the lead — just 1-5% above the current highest bid.`,
+is ending soon or when you have been outbid. Bid 1-5% above the current highest bid.` + bidRule,
 
 	domain.PersonalityValue: `You are Value Victor. You are disciplined. Estimate the fair market value of the
-item from its title and description. Only use the place_bid tool if the start
-price is less than 70% of your estimated value. Bid at 80% of your estimate.`,
+item from its title and description. Only use the place_bid tool if the current highest bid
+is less than 70% of your estimated value. Bid at 80% of your estimate, but only if that
+amount is strictly greater than the current highest bid.` + bidRule,
 
 	domain.PersonalityChaos: `You are Chaos Charlie. You are unpredictable. Randomly decide whether to bid
 (roughly 50% of the time). If you bid, choose a random amount between 10% and
-50% above the start price.`,
+50% above the current highest bid.` + bidRule,
 }
 
 func (ba *BotAgent) ID() int64    { return ba.bot.ID }
@@ -122,7 +127,7 @@ func NewBotAgent(ctx context.Context, bot *domain.Bot, geminiAPIKey string, bidC
 		return nil, fmt.Errorf("unknown bot personality: %s", bot.Personality)
 	}
 
-	llm, err := gemini.NewModel(ctx, "gemini-2.0-flash", &genai.ClientConfig{
+	llm, err := gemini.NewModel(ctx, "gemini-3-flash-preview", &genai.ClientConfig{
 		APIKey: geminiAPIKey,
 	})
 	if err != nil {
@@ -168,10 +173,14 @@ func (ba *BotAgent) Evaluate(ctx context.Context, ac AuctionContext) error {
 		return fmt.Errorf("failed to create runner: %w", err)
 	}
 
+	minBid := ac.HighestBid
+	if minBid == 0 {
+		minBid = ac.StartPrice
+	}
 	msg := genai.NewContentFromText(fmt.Sprintf(
-		"Auction ID: %d\nTitle: %s\nDescription: %s\nStart Price: %.2f\nHighest Bid: %.2f\nEnds At: %s\nEvent: %s\n\nDecide whether to bid.",
+		"Auction ID: %d\nTitle: %s\nDescription: %s\nStart Price: %.2f\nHighest Bid: %.2f\nMinimum Valid Bid: %.2f\nEnds At: %s\nEvent: %s\n\nDecide whether to bid. Your bid MUST be greater than %.2f or it will be rejected.",
 		ac.AuctionID, ac.Title, ac.Description, ac.StartPrice, ac.HighestBid,
-		ac.EndTime.Format(time.RFC3339), ac.TriggerEvent,
+		minBid, ac.EndTime.Format(time.RFC3339), ac.TriggerEvent, minBid,
 	), genai.RoleUser)
 
 	for event, err := range r.Run(ctx, userID, sessionID, msg, adkagent.RunConfig{}) {

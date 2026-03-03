@@ -86,6 +86,17 @@ func (m *MockBidRepository) ListByAuction(ctx context.Context, auctionID int64) 
 	return m.ListByAuctionResult, m.ListByAuctionErr
 }
 
+type GetWinnerArgs struct {
+	Ctx       context.Context
+	AuctionID int64
+}
+
+func (m *MockBidRepository) GetWinner(context.Context, int64) (int64, float64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return 0, 0, nil
+}
+
 // --- MockAuctionSnapshotRepository ---
 
 type MockAuctionSnapshotRepository struct {

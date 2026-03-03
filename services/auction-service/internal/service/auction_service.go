@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/bidclient"
 	"github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/domain"
 	"go.uber.org/zap"
 )
@@ -12,13 +13,15 @@ import (
 type AuctionService struct {
 	repo      domain.AuctionRepository
 	publisher domain.EventPublisher
+	bidClient *bidclient.BidServiceClient
 	logger    *zap.Logger
 }
 
-func NewAuctionService(repo domain.AuctionRepository, publisher domain.EventPublisher, logger *zap.Logger) *AuctionService {
+func NewAuctionService(repo domain.AuctionRepository, publisher domain.EventPublisher, bidClient *bidclient.BidServiceClient, logger *zap.Logger) *AuctionService {
 	return &AuctionService{
 		repo:      repo,
 		publisher: publisher,
+		bidClient: bidClient,
 		logger:    logger,
 	}
 }
@@ -67,7 +70,22 @@ func (s *AuctionService) ProcessExpiredAuctions(ctx context.Context) error {
 	}
 
 	for _, auction := range expired {
-		if err := auction.Close(0, 0); err != nil {
+		// Query the bid-service for the winning bot and amount before closing.
+		var winnerBotID int64
+		var winningAmount float64
+		if s.bidClient != nil {
+			winnerBotID, winningAmount, err = s.bidClient.GetWinner(ctx, auction.ID)
+			if err != nil {
+				s.logger.Warn("failed to get winner from bid-service, closing as unsold",
+					zap.Int64("auction_id", auction.ID),
+					zap.Error(err),
+				)
+				winnerBotID = 0
+				winningAmount = 0
+			}
+		}
+
+		if err := auction.Close(winnerBotID, winningAmount); err != nil {
 			s.logger.Error("failed to close expired auction",
 				zap.Int64("auction_id", auction.ID),
 				zap.Error(err),
@@ -90,9 +108,15 @@ func (s *AuctionService) ProcessExpiredAuctions(ctx context.Context) error {
 			)
 		}
 
+		finalStatus := "unsold"
+		if winnerBotID > 0 {
+			finalStatus = "sold"
+		}
 		s.logger.Info("auction closed",
 			zap.Int64("auction_id", auction.ID),
-			zap.String("final_status", "unsold"),
+			zap.String("final_status", finalStatus),
+			zap.Int64("winner_bot_id", winnerBotID),
+			zap.Float64("winning_amount", winningAmount),
 		)
 	}
 	return nil

@@ -19,7 +19,7 @@ func newRouterWithMocks(t *testing.T) (*gin.Engine, *testutil.MockAuctionReposit
 	repo := &testutil.MockAuctionRepository{}
 	publisher := &testutil.MockEventPublisher{}
 	logger := testutil.NewTestLogger(t)
-	svc := service.NewAuctionService(repo, publisher, logger)
+	svc := service.NewAuctionService(repo, publisher, nil, logger)
 	handler := NewAuctionHandler(svc, logger)
 	return NewRouter(handler, logger), repo, publisher
 }

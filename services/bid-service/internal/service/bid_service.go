@@ -26,6 +26,10 @@ func NewBidService(bidRepo domain.BidRepository, snapShotRepo domain.AuctionSnap
 	}
 }
 
+func (s *BidService) GetWinner(ctx context.Context, auctionID int64) (botID int64, amount float64, err error) {
+	return s.bidRepo.GetWinner(ctx, auctionID)
+}
+
 func (s *BidService) PlaceBid(ctx context.Context, auctionID int64, bidderID int64, amount float64) (*domain.Bid, error) {
 	err := s.lockManager.AcquireLock(ctx, auctionID, 5*time.Second)
 	if err != nil {

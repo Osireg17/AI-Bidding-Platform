@@ -2,6 +2,8 @@ package repo
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 
 	"github.com/Osireg17/AI-Bidding-Platform/services/bid-service/internal/domain"
 	"github.com/uptrace/bun"
@@ -27,6 +29,26 @@ func (r *PostgresBidRepo) GetHighestBid(ctx context.Context, auctionID int64) (f
 		FROM bids
 		WHERE auction_id = ? AND status = 'accepted'`, auctionID).Scan(ctx, &highestBid)
 	return highestBid, err
+}
+
+func (r *PostgresBidRepo) GetWinner(ctx context.Context, auctionID int64) (int64, float64, error) {
+	var result struct {
+		BotID  int64   `bun:"bot_id"`
+		Amount float64 `bun:"amount"`
+	}
+	err := r.db.NewRaw(`
+	SELECT bot_id, amount
+	FROM bids
+	WHERE auction_id = ? AND status = 'accepted'
+	ORDER BY amount DESC
+	LIMIT 1`, auctionID).Scan(ctx, &result)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, 0, nil
+		}
+		return 0, 0, err
+	}
+	return result.BotID, result.Amount, nil
 }
 
 func (r *PostgresBidRepo) ListByAuction(ctx context.Context, auctionID int64) ([]*domain.Bid, error) {
