@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/agent"
 	"github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/bidclient"
 	"github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/config"
 	auctionhttp "github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/http"
@@ -70,7 +71,18 @@ func main() {
 	// Build dependencies.
 	auctionRepo := repo.NewPostgresAuctionRepo(db)
 	bidClient := bidclient.NewBidServiceClient(cfg.BidServiceURL, logger)
-	auctionSvc := service.NewAuctionService(auctionRepo, publisher, bidClient, logger)
+
+	// Wire the auction agent (generates new items after each auction closes).
+	os.Setenv("GOOGLE_API_KEY", cfg.GeminiAPIKey)
+	var auctionAgent *agent.AuctionAgent
+	if cfg.GeminiAPIKey != "" {
+		auctionAgent = agent.NewAuctionAgent(cfg.GeminiAPIKey, logger)
+		logger.Info("auction agent initialised")
+	} else {
+		logger.Warn("GEMINI_API_KEY not set — auction agent disabled, no auto-creation after auctions end")
+	}
+
+	auctionSvc := service.NewAuctionService(auctionRepo, publisher, bidClient, auctionAgent, logger)
 	handler := auctionhttp.NewAuctionHandler(auctionSvc, logger)
 	router := auctionhttp.NewRouter(handler, logger)
 

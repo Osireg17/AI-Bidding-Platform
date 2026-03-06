@@ -32,7 +32,7 @@ type auctionResponseDTO struct {
 func newHandler(t *testing.T, repo *testutil.MockAuctionRepository, publisher *testutil.MockEventPublisher) *AuctionHandler {
 	t.Helper()
 	logger := testutil.NewTestLogger(t)
-	svc := service.NewAuctionService(repo, publisher, nil, logger)
+	svc := service.NewAuctionService(repo, publisher, nil, nil, logger)
 	return NewAuctionHandler(svc, logger)
 }
 

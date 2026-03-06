@@ -12,6 +12,7 @@ type Config struct {
 	DatabaseURL          string
 	RabbitMQURL          string
 	BidServiceURL        string
+	GeminiAPIKey         string
 	LogLevel             string
 	EndingSoonThreshold  time.Duration
 	AuctionCheckInterval time.Duration
@@ -27,6 +28,7 @@ func Load() (*Config, error) {
 	dbURL := getEnv("DATABASE_URL", "")
 	rabbitURL := getEnv("RABBITMQ_URL", "")
 	bidServiceURL := getEnv("BID_SERVICE_URL", "http://localhost:8082")
+	geminiAPIKey := getEnv("GEMINI_API_KEY", "")
 	logLevel := getEnv("LOG_LEVEL", "info")
 	endingSoonSec := getEnvInt("ENDING_SOON_THRESHOLD_SEC", 30)
 	checkIntervalSec := getEnvInt("AUCTION_CHECK_INTERVAL_SEC", 5)
@@ -43,6 +45,7 @@ func Load() (*Config, error) {
 		DatabaseURL:          dbURL,
 		RabbitMQURL:          rabbitURL,
 		BidServiceURL:        bidServiceURL,
+		GeminiAPIKey:         geminiAPIKey,
 		LogLevel:             logLevel,
 		EndingSoonThreshold:  time.Duration(endingSoonSec) * time.Second,
 		AuctionCheckInterval: time.Duration(checkIntervalSec) * time.Second,
