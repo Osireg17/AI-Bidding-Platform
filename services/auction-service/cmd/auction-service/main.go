@@ -80,7 +80,7 @@ func main() {
 	bidClient := bidclient.NewBidServiceClient(cfg.BidServiceURL, logger)
 
 	// Wire the auction agent (generates new items after each auction closes).
-	os.Setenv("GOOGLE_API_KEY", cfg.GeminiAPIKey)
+	// Key is passed directly via ClientConfig in agent.Generate — no os.Setenv needed.
 	var auctionAgent *agent.AuctionAgent
 	if cfg.GeminiAPIKey != "" {
 		auctionAgent = agent.NewAuctionAgent(cfg.GeminiAPIKey, logger)
