@@ -18,6 +18,7 @@ const bidServiceQueueName = "bid.q"
 var errNonRetryable = errors.New("non-retryable consumer error")
 
 type AuctionEventConsumer struct {
+	url     string
 	conn    *amqp.Connection
 	channel *amqp.Channel
 	repo    domain.AuctionSnapshotRepository
@@ -49,44 +50,35 @@ func (d amqpDelivery) DeliveryTag() uint64 {
 }
 
 func NewAuctionEventConsumer(url string, repo domain.AuctionSnapshotRepository, logger *zap.Logger) (*AuctionEventConsumer, error) {
-	conn, err := amqp.Dial(url)
+	c := &AuctionEventConsumer{url: url, repo: repo, logger: logger}
+	if err := c.connect(); err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+func (c *AuctionEventConsumer) connect() error {
+	conn, err := amqp.Dial(c.url)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to RabbitMQ: %w", err)
+		return fmt.Errorf("failed to connect to RabbitMQ: %w", err)
 	}
 
 	ch, err := conn.Channel()
 	if err != nil {
 		_ = conn.Close()
-		return nil, fmt.Errorf("failed to open RabbitMQ channel: %w", err)
+		return fmt.Errorf("failed to open RabbitMQ channel: %w", err)
 	}
 
-	err = ch.ExchangeDeclare(
-		events.ExchangeName, // name
-		events.ExchangeKind, // type (topic)
-		true,                // durable
-		false,               // auto-deleted
-		false,               // internal
-		false,               // no-wait
-		nil,                 // arguments
-	)
-	if err != nil {
+	if err = ch.ExchangeDeclare(events.ExchangeName, events.ExchangeKind, true, false, false, false, nil); err != nil {
 		_ = ch.Close()
 		_ = conn.Close()
-		return nil, fmt.Errorf("failed to declare exchange %s: %w", events.ExchangeName, err)
+		return fmt.Errorf("failed to declare exchange %s: %w", events.ExchangeName, err)
 	}
 
-	_, err = ch.QueueDeclare(
-		bidServiceQueueName, // name
-		true,                // durable
-		false,               // autoDelete
-		false,               // exclusive
-		false,               // noWait
-		nil,                 // arguments
-	)
-	if err != nil {
+	if _, err = ch.QueueDeclare(bidServiceQueueName, true, false, false, false, nil); err != nil {
 		_ = ch.Close()
 		_ = conn.Close()
-		return nil, fmt.Errorf("failed to declare queue %s: %w", bidServiceQueueName, err)
+		return fmt.Errorf("failed to declare queue %s: %w", bidServiceQueueName, err)
 	}
 
 	routingKeys := []string{
@@ -95,53 +87,77 @@ func NewAuctionEventConsumer(url string, repo domain.AuctionSnapshotRepository, 
 		events.RoutingKeyAuctionEnded,
 	}
 	for _, routingKey := range routingKeys {
-		err = ch.QueueBind(
-			bidServiceQueueName, // queue name
-			routingKey,          // routing key
-			events.ExchangeName, // exchange
-			false,               // noWait
-			nil,                 // arguments
-		)
-		if err != nil {
+		if err = ch.QueueBind(bidServiceQueueName, routingKey, events.ExchangeName, false, nil); err != nil {
 			_ = ch.Close()
 			_ = conn.Close()
-			return nil, fmt.Errorf("failed to bind queue %s to routing key %s: %w", bidServiceQueueName, routingKey, err)
+			return fmt.Errorf("failed to bind queue %s to routing key %s: %w", bidServiceQueueName, routingKey, err)
 		}
 	}
 
-	logger.Info("RabbitMQ consumer initialized", zap.String("exchange", events.ExchangeName), zap.Strings("routing_keys", routingKeys))
-	return &AuctionEventConsumer{conn: conn, channel: ch, repo: repo, logger: logger}, nil
+	c.conn = conn
+	c.channel = ch
+	c.logger.Info("RabbitMQ consumer initialized", zap.String("exchange", events.ExchangeName), zap.Strings("routing_keys", routingKeys))
+	return nil
 }
 
 func (c *AuctionEventConsumer) Start(ctx context.Context) error {
-	msgs, err := c.channel.Consume(
-		bidServiceQueueName, // queue
-		"",                  // consumer
-		false,               // autoAck
-		false,               // exclusive
-		false,               // noLocal
-		false,               // noWait
-		nil,                 // args
-	)
-	if err != nil {
-		return fmt.Errorf("failed to start consuming messages: %w", err)
-	}
-
-	c.logger.Info("auction event consumer started")
 	for {
-		select {
-		case msg, ok := <-msgs:
-			if !ok {
-				c.logger.Warn("message channel closed")
-				return errors.New("auction event consumer message channel closed")
-			}
-			if err := c.handleDelivery(ctx, amqpDelivery{Delivery: msg}); err != nil {
-				return err
-			}
-		case <-ctx.Done():
-			c.logger.Info("auction event consumer shutting down")
+		if ctx.Err() != nil {
 			return nil
 		}
+
+		msgs, err := c.channel.Consume(bidServiceQueueName, "", false, false, false, false, nil)
+		if err != nil {
+			c.logger.Warn("failed to start consuming, reconnecting", zap.Error(err))
+			if reconnErr := c.reconnect(ctx); reconnErr != nil {
+				return reconnErr
+			}
+			continue
+		}
+
+		c.logger.Info("auction event consumer started")
+	loop:
+		for {
+			select {
+			case msg, ok := <-msgs:
+				if !ok {
+					c.logger.Warn("message channel closed, reconnecting")
+					break loop
+				}
+				if err := c.handleDelivery(ctx, amqpDelivery{Delivery: msg}); err != nil {
+					c.logger.Error("failed to handle delivery, reconnecting", zap.Error(err))
+					break loop
+				}
+			case <-ctx.Done():
+				c.logger.Info("auction event consumer shutting down")
+				return nil
+			}
+		}
+
+		if reconnErr := c.reconnect(ctx); reconnErr != nil {
+			return reconnErr
+		}
+	}
+}
+
+func (c *AuctionEventConsumer) reconnect(ctx context.Context) error {
+	_ = c.Close()
+	for {
+		if ctx.Err() != nil {
+			return nil
+		}
+		c.logger.Info("attempting to reconnect to RabbitMQ")
+		if err := c.connect(); err != nil {
+			c.logger.Warn("reconnect failed, retrying in 5s", zap.Error(err))
+			select {
+			case <-time.After(5 * time.Second):
+			case <-ctx.Done():
+				return nil
+			}
+			continue
+		}
+		c.logger.Info("reconnected to RabbitMQ")
+		return nil
 	}
 }
 

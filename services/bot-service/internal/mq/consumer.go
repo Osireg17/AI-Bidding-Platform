@@ -35,6 +35,7 @@ type BotEvaluator interface {
 }
 
 type BotEventConsumer struct {
+	url     string
 	conn    *amqp.Connection
 	channel *amqp.Channel
 	bots    []BotEvaluator
@@ -58,44 +59,35 @@ func (d amqpDelivery) RoutingKey() string  { return d.Delivery.RoutingKey }
 func (d amqpDelivery) DeliveryTag() uint64 { return d.Delivery.DeliveryTag }
 
 func NewBotEventConsumer(url string, bots []BotEvaluator, logger *zap.Logger) (*BotEventConsumer, error) {
-	conn, err := amqp.Dial(url)
+	c := &BotEventConsumer{url: url, bots: bots, logger: logger}
+	if err := c.connect(); err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+func (c *BotEventConsumer) connect() error {
+	conn, err := amqp.Dial(c.url)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to RabbitMQ: %w", err)
+		return fmt.Errorf("failed to connect to RabbitMQ: %w", err)
 	}
 
 	ch, err := conn.Channel()
 	if err != nil {
 		_ = conn.Close()
-		return nil, fmt.Errorf("failed to open RabbitMQ channel: %w", err)
+		return fmt.Errorf("failed to open RabbitMQ channel: %w", err)
 	}
 
-	err = ch.ExchangeDeclare(
-		events.ExchangeName,
-		events.ExchangeKind,
-		true,  // durable
-		false, // auto-deleted
-		false, // internal
-		false, // no-wait
-		nil,   // arguments
-	)
-	if err != nil {
+	if err = ch.ExchangeDeclare(events.ExchangeName, events.ExchangeKind, true, false, false, false, nil); err != nil {
 		_ = ch.Close()
 		_ = conn.Close()
-		return nil, fmt.Errorf("failed to declare exchange %s: %w", events.ExchangeName, err)
+		return fmt.Errorf("failed to declare exchange %s: %w", events.ExchangeName, err)
 	}
 
-	_, err = ch.QueueDeclare(
-		botServiceQueueName,
-		true,  // durable
-		false, // autoDelete
-		false, // exclusive
-		false, // noWait
-		nil,   // arguments
-	)
-	if err != nil {
+	if _, err = ch.QueueDeclare(botServiceQueueName, true, false, false, false, nil); err != nil {
 		_ = ch.Close()
 		_ = conn.Close()
-		return nil, fmt.Errorf("failed to declare queue %s: %w", botServiceQueueName, err)
+		return fmt.Errorf("failed to declare queue %s: %w", botServiceQueueName, err)
 	}
 
 	routingKeys := []string{
@@ -105,56 +97,80 @@ func NewBotEventConsumer(url string, bots []BotEvaluator, logger *zap.Logger) (*
 		events.RoutingKeyBidPlaced,
 	}
 	for _, key := range routingKeys {
-		err = ch.QueueBind(
-			botServiceQueueName,
-			key,
-			events.ExchangeName,
-			false,
-			nil,
-		)
-		if err != nil {
+		if err = ch.QueueBind(botServiceQueueName, key, events.ExchangeName, false, nil); err != nil {
 			_ = ch.Close()
 			_ = conn.Close()
-			return nil, fmt.Errorf("failed to bind queue to routing key %s: %w", key, err)
+			return fmt.Errorf("failed to bind queue to routing key %s: %w", key, err)
 		}
 	}
 
-	logger.Info("RabbitMQ consumer initialized",
+	c.conn = conn
+	c.channel = ch
+	c.logger.Info("RabbitMQ consumer initialized",
 		zap.String("exchange", events.ExchangeName),
 		zap.Strings("routing_keys", routingKeys),
 	)
-	return &BotEventConsumer{conn: conn, channel: ch, bots: bots, logger: logger}, nil
+	return nil
 }
 
 func (c *BotEventConsumer) Start(ctx context.Context) error {
-	msgs, err := c.channel.Consume(
-		botServiceQueueName,
-		"",    // consumer tag
-		false, // autoAck
-		false, // exclusive
-		false, // noLocal
-		false, // noWait
-		nil,   // args
-	)
-	if err != nil {
-		return fmt.Errorf("failed to start consuming messages: %w", err)
-	}
-
-	c.logger.Info("bot event consumer started")
 	for {
-		select {
-		case msg, ok := <-msgs:
-			if !ok {
-				c.logger.Warn("message channel closed")
-				return errors.New("bot event consumer message channel closed")
-			}
-			if err := c.handleDelivery(ctx, amqpDelivery{Delivery: msg}); err != nil {
-				c.logger.Error("failed to handle delivery, continuing", zap.Error(err))
-			}
-		case <-ctx.Done():
-			c.logger.Info("bot event consumer shutting down")
+		if ctx.Err() != nil {
 			return nil
 		}
+
+		msgs, err := c.channel.Consume(botServiceQueueName, "", false, false, false, false, nil)
+		if err != nil {
+			c.logger.Warn("failed to start consuming, reconnecting", zap.Error(err))
+			if reconnErr := c.reconnect(ctx); reconnErr != nil {
+				return reconnErr
+			}
+			continue
+		}
+
+		c.logger.Info("bot event consumer started")
+	loop:
+		for {
+			select {
+			case msg, ok := <-msgs:
+				if !ok {
+					c.logger.Warn("message channel closed, reconnecting")
+					break loop
+				}
+				if err := c.handleDelivery(ctx, amqpDelivery{Delivery: msg}); err != nil {
+					c.logger.Error("failed to handle delivery, reconnecting", zap.Error(err))
+					break loop
+				}
+			case <-ctx.Done():
+				c.logger.Info("bot event consumer shutting down")
+				return nil
+			}
+		}
+
+		if reconnErr := c.reconnect(ctx); reconnErr != nil {
+			return reconnErr
+		}
+	}
+}
+
+func (c *BotEventConsumer) reconnect(ctx context.Context) error {
+	_ = c.Close()
+	for {
+		if ctx.Err() != nil {
+			return nil
+		}
+		c.logger.Info("attempting to reconnect to RabbitMQ")
+		if err := c.connect(); err != nil {
+			c.logger.Warn("reconnect failed, retrying in 5s", zap.Error(err))
+			select {
+			case <-time.After(5 * time.Second):
+			case <-ctx.Done():
+				return nil
+			}
+			continue
+		}
+		c.logger.Info("reconnected to RabbitMQ")
+		return nil
 	}
 }
 
