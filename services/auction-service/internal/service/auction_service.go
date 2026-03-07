@@ -3,26 +3,30 @@ package service
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"time"
 
+	"github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/agent"
 	"github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/bidclient"
 	"github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/domain"
 	"go.uber.org/zap"
 )
 
 type AuctionService struct {
-	repo      domain.AuctionRepository
-	publisher domain.EventPublisher
-	bidClient *bidclient.BidServiceClient
-	logger    *zap.Logger
+	repo         domain.AuctionRepository
+	publisher    domain.EventPublisher
+	bidClient    *bidclient.BidServiceClient
+	auctionAgent *agent.AuctionAgent
+	logger       *zap.Logger
 }
 
-func NewAuctionService(repo domain.AuctionRepository, publisher domain.EventPublisher, bidClient *bidclient.BidServiceClient, logger *zap.Logger) *AuctionService {
+func NewAuctionService(repo domain.AuctionRepository, publisher domain.EventPublisher, bidClient *bidclient.BidServiceClient, auctionAgent *agent.AuctionAgent, logger *zap.Logger) *AuctionService {
 	return &AuctionService{
-		repo:      repo,
-		publisher: publisher,
-		bidClient: bidClient,
-		logger:    logger,
+		repo:         repo,
+		publisher:    publisher,
+		bidClient:    bidClient,
+		auctionAgent: auctionAgent,
+		logger:       logger,
 	}
 }
 
@@ -118,6 +122,32 @@ func (s *AuctionService) ProcessExpiredAuctions(ctx context.Context) error {
 			zap.Int64("winner_bot_id", winnerBotID),
 			zap.Float64("winning_amount", winningAmount),
 		)
+
+		// After closing, wait a random delay then generate and create the next auction.
+		if s.auctionAgent != nil {
+			delay := time.Duration(rand.Int63n(int64(5 * time.Minute)))
+			s.logger.Info("scheduling next auction", zap.Duration("delay", delay))
+
+			select {
+			case <-ctx.Done():
+				s.logger.Info("context cancelled, skipping next auction creation")
+				return nil
+			case <-time.After(delay):
+			}
+
+			item, err := s.auctionAgent.Generate(ctx)
+			if err != nil {
+				s.logger.Error("failed to generate next auction item", zap.Error(err))
+				continue
+			}
+
+			next, err := s.CreateAuction(ctx, item.Title, item.Description, item.StartPrice, time.Duration(item.DurationSec)*time.Second)
+			if err != nil {
+				s.logger.Error("failed to create next auction", zap.Error(err))
+			} else {
+				s.logger.Info("next auction created", zap.Int64("auction_id", next.ID), zap.String("title", next.Title))
+			}
+		}
 	}
 	return nil
 }

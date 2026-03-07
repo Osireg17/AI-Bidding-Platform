@@ -8,9 +8,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/agent"
 	"github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/bidclient"
 	"github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/config"
+	"github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/domain"
 	auctionhttp "github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/http"
 	"github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/mq"
 	"github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/observability"
@@ -42,7 +45,12 @@ func main() {
 		}
 		os.Exit(1)
 	}
-	defer logger.Sync()
+	defer func(logger *zap.Logger) {
+		err := logger.Sync()
+		if err != nil {
+
+		}
+	}(logger)
 
 	// Connect to Postgres via Bun.
 	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(cfg.DatabaseURL)))
@@ -70,9 +78,47 @@ func main() {
 	// Build dependencies.
 	auctionRepo := repo.NewPostgresAuctionRepo(db)
 	bidClient := bidclient.NewBidServiceClient(cfg.BidServiceURL, logger)
-	auctionSvc := service.NewAuctionService(auctionRepo, publisher, bidClient, logger)
+
+	// Wire the auction agent (generates new items after each auction closes).
+	os.Setenv("GOOGLE_API_KEY", cfg.GeminiAPIKey)
+	var auctionAgent *agent.AuctionAgent
+	if cfg.GeminiAPIKey != "" {
+		auctionAgent = agent.NewAuctionAgent(cfg.GeminiAPIKey, logger)
+		logger.Info("auction agent initialised")
+	} else {
+		logger.Warn("GEMINI_API_KEY not set — auction agent disabled, no auto-creation after auctions end")
+	}
+
+	auctionSvc := service.NewAuctionService(auctionRepo, publisher, bidClient, auctionAgent, logger)
 	handler := auctionhttp.NewAuctionHandler(auctionSvc, logger)
 	router := auctionhttp.NewRouter(handler, logger)
+
+	// Bootstrap: create an initial auction if none is currently active.
+	if auctionAgent != nil {
+		auctions, err := auctionSvc.ListAuctions(context.Background())
+		if err != nil {
+			logger.Fatal("failed to list auctions on startup", zap.Error(err))
+		}
+		hasActive := false
+		for _, a := range auctions {
+			if a.Status == domain.StatusActive || a.Status == domain.StatusEndingSoon {
+				hasActive = true
+				break
+			}
+		}
+		if !hasActive {
+			logger.Info("no active auction found, generating initial auction")
+			item, err := auctionAgent.Generate(context.Background())
+			if err != nil {
+				logger.Fatal("failed to generate initial auction item", zap.Error(err))
+			}
+			if _, err := auctionSvc.CreateAuction(context.Background(), item.Title, item.Description, item.StartPrice, time.Duration(item.DurationSec)*time.Second); err != nil {
+				logger.Fatal("failed to create initial auction", zap.Error(err))
+			}
+		} else {
+			logger.Info("active auction already exists, skipping bootstrap")
+		}
+	}
 
 	// Start scheduler.
 	schedulerCtx, schedulerCancel := context.WithCancel(context.Background())
