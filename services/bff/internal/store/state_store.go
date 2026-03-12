@@ -17,12 +17,14 @@ type InMemoryStateStore struct {
 }
 
 func NewInMemoryStateStore() *InMemoryStateStore {
-	return &InMemoryStateStore{}
+	return &InMemoryStateStore{
+		logger: zap.NewNop(),
+	}
 }
 
 func (s *InMemoryStateStore) GetState() domain.AuctionState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	stateCopy := s.state
 	stateCopy.Bids = make([]domain.BidView, len(s.state.Bids))
