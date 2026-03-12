@@ -4,9 +4,9 @@ import "github.com/Osireg17/AI-Bidding-Platform/shared/events"
 
 // StateStore holds the current AuctionState in memory and applies event-driven updates.
 // All Apply* methods are called by the MQ consumer as events arrive.
-// GetState is called by REST and SSE handlers to read current state.
+// GetState is called by REST and SSE handlers to read current store.
 type StateStore interface {
-	// GetState returns a snapshot copy of the current auction state.
+	// GetState returns a snapshot copy of the current auction store.
 	// Safe for concurrent reads.
 	GetState() AuctionState
 
