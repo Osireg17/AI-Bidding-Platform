@@ -10,9 +10,11 @@ var BotNames = map[int64]string{
 }
 
 type AuctionState struct {
-	Auction *AuctionView
-	Bids    []BidView
-	Winner  *WinnerView
+	Auction    AuctionView
+	HasAuction bool
+	Bids       []BidView
+	Winner     WinnerView
+	HasWinner  bool
 }
 
 type AuctionView struct {

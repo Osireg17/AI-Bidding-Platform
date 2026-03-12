@@ -8,7 +8,7 @@ import (
 )
 
 // === CONTEXT ===
-// Purpose: Background scheduler that periodically checks for auction state transitions.
+// Purpose: Background scheduler that periodically checks for auction store transitions.
 // Runs a ticker that calls ProcessExpiredAuctions and ProcessEndingSoonAuctions.
 // Reference: service/auction_service.go for the methods being called.
 //
