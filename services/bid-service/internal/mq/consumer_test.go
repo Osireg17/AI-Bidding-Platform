@@ -14,8 +14,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// --- Mock ---
-
 type mockSnapshotRepo struct {
 	upsertCalled       bool
 	upsertSnapshot     *domain.AuctionSnapshot
@@ -41,8 +39,6 @@ func (m *mockSnapshotRepo) UpdateStatus(_ context.Context, auctionID int64, stat
 	m.updateStatusValue = status
 	return m.errToReturn
 }
-
-// --- Helpers ---
 
 func newTestConsumer(repo domain.AuctionSnapshotRepository) *AuctionEventConsumer {
 	return &AuctionEventConsumer{conn: nil, channel: nil, repo: repo, logger: zap.NewNop()}
@@ -104,8 +100,6 @@ func makeAuctionCreatedPayload() events.AuctionCreatedPayload {
 		EndTime:     now.Add(time.Hour).Format(time.RFC3339),
 	}
 }
-
-// --- Tests ---
 
 func TestHandleDelivery_AuctionCreated(t *testing.T) {
 	repo := &mockSnapshotRepo{}

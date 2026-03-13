@@ -15,10 +15,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// ---------------------------------------------------------------------------
-// Fakes
-// ---------------------------------------------------------------------------
-
 type fakeBot struct {
 	id          int64
 	name        string
@@ -57,7 +53,6 @@ func (f *fakeBot) lastCall() agent.AuctionContext {
 	return f.calls[len(f.calls)-1]
 }
 
-// fakeDelivery implements the delivery interface.
 type fakeDelivery struct {
 	body        []byte
 	routingKey  string
@@ -76,10 +71,6 @@ func (d *fakeDelivery) Nack(_ bool, requeue bool) error {
 	d.nackRequeue = requeue
 	return nil
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 func newTestConsumer(bots []BotEvaluator) *BotEventConsumer {
 	return &BotEventConsumer{bots: bots, logger: zap.NewNop()}
