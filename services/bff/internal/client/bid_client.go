@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/Osireg17/AI-Bidding-Platform/services/bff/internal/domain"
 	"go.uber.org/zap"
 )
 
@@ -22,6 +21,12 @@ func NewBidServiceClient(baseURL string, logger *zap.Logger) *BidServiceClient {
 		httpClient: &http.Client{},
 		logger:     logger,
 	}
+}
+
+type highestBidResponse struct {
+	AuctionID int64   `json:"auction_id"`
+	BotID     int64   `json:"bot_id"`
+	Amount    float64 `json:"amount"`
 }
 
 func (c *BidServiceClient) GetHighestBid(ctx context.Context, auctionID int64) (int64, float64, error) {
@@ -42,7 +47,7 @@ func (c *BidServiceClient) GetHighestBid(ctx context.Context, auctionID int64) (
 		return 0, 0, fmt.Errorf("get highest bid: unexpected status %d", resp.StatusCode)
 	}
 
-	var bid domain.BidView
+	var bid highestBidResponse
 	if err := json.NewDecoder(resp.Body).Decode(&bid); err != nil {
 		return 0, 0, fmt.Errorf("decode response: %w", err)
 	}
