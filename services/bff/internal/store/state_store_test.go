@@ -16,6 +16,7 @@ func newTestStore() *InMemoryStateStore {
 		logger: zap.NewNop(),
 	}
 }
+
 func TestApplyAuctionCreated(t *testing.T) {
 	s := newTestStore()
 
