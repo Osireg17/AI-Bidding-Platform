@@ -1,4 +1,4 @@
-package bidclient
+package client
 
 import (
 	"context"
@@ -29,9 +29,7 @@ type highestBidResponse struct {
 	Amount    float64 `json:"amount"`
 }
 
-// GetWinner calls GET /api/bids/highest?auction_id=<id> and returns the
-// winning botID and amount. Returns (0, 0, nil) when no bids have been placed.
-func (c *BidServiceClient) GetWinner(ctx context.Context, auctionID int64) (botID int64, amount float64, err error) {
+func (c *BidServiceClient) GetHighestBid(ctx context.Context, auctionID int64) (int64, float64, error) {
 	url := fmt.Sprintf("%s/api/bids/highest?auction_id=%d", c.baseURL, auctionID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -41,18 +39,18 @@ func (c *BidServiceClient) GetWinner(ctx context.Context, auctionID int64) (botI
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return 0, 0, fmt.Errorf("get winner: %w", err)
+		return 0, 0, fmt.Errorf("get highest bid: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return 0, 0, fmt.Errorf("get winner: unexpected status %d", resp.StatusCode)
+		return 0, 0, fmt.Errorf("get highest bid: unexpected status %d", resp.StatusCode)
 	}
 
-	var body highestBidResponse
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+	var bid highestBidResponse
+	if err := json.NewDecoder(resp.Body).Decode(&bid); err != nil {
 		return 0, 0, fmt.Errorf("decode response: %w", err)
 	}
 
-	return body.BotID, body.Amount, nil
+	return bid.BotID, bid.Amount, nil
 }
