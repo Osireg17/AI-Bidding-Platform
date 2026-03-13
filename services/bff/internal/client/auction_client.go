@@ -35,7 +35,7 @@ type auctionResponse struct {
 	EndTime      string  `json:"end_time"`
 }
 
-func (c *AuctionServiceClient) GetAuctions(ctx context.Context) (*domain.AuctionView, error) {
+func (c *AuctionServiceClient) GetActiveAuction(ctx context.Context) (*domain.AuctionView, error) {
 	url := fmt.Sprintf("%s/api/auctions", c.baseURL)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
