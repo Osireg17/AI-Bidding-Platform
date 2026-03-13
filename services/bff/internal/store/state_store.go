@@ -16,9 +16,9 @@ type InMemoryStateStore struct {
 	logger *zap.Logger
 }
 
-func NewInMemoryStateStore() *InMemoryStateStore {
+func NewInMemoryStateStore(logger *zap.Logger) *InMemoryStateStore {
 	return &InMemoryStateStore{
-		logger: zap.NewNop(),
+		logger: logger,
 	}
 }
 
@@ -103,7 +103,7 @@ func (s *InMemoryStateStore) ApplyBidPlaced(payload events.BidPlacedPayload) {
 	timestamp, err := time.Parse(time.RFC3339, payload.Timestamp)
 	if err != nil {
 		s.logger.Error("failed to parse bid timestamp", zap.String("timestamp", payload.Timestamp), zap.Error(err))
-		return
+		timestamp = time.Time{}
 	}
 
 	s.mu.Lock()
@@ -131,5 +131,3 @@ func (s *InMemoryStateStore) ApplyBidPlaced(payload events.BidPlacedPayload) {
 }
 
 var _ domain.StateStore = (*InMemoryStateStore)(nil)
-
-var _ = time.RFC3339
