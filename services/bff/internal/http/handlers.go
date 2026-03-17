@@ -108,10 +108,15 @@ func (h *BFFHandler) HandleStream(c *gin.Context) {
 
 	// Send an immediate snapshot so the client has state on connect.
 	state := h.store.GetState()
-	if b, err := json.Marshal(toStateResponse(state)); err == nil {
-		fmt.Fprintf(c.Writer, "event: auction.snapshot\ndata: %s\n\n", b)
+	b, err := json.Marshal(toStateResponse(state))
+	if err != nil {
+		h.logger.Error("failed to marshal initial snapshot", zap.Error(err))
+		fmt.Fprintf(c.Writer, "event: error\ndata: {\"message\":\"failed to load initial state\"}\n\n")
 		c.Writer.Flush()
+		return
 	}
+	fmt.Fprintf(c.Writer, "event: auction.snapshot\ndata: %s\n\n", b)
+	c.Writer.Flush()
 
 	ctx := c.Request.Context()
 	for {
