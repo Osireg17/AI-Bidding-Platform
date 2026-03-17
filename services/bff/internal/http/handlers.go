@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -125,7 +126,9 @@ func (h *BFFHandler) HandleStream(c *gin.Context) {
 			if !ok {
 				return
 			}
-			fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", event.Name, event.Payload)
+			// Compact removes any whitespace/newlines that would break SSE framing.
+			payload := bytes.TrimSpace(event.Payload)
+			fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", event.Name, payload)
 			c.Writer.Flush()
 		case <-ctx.Done():
 			h.logger.Info("SSE client disconnected",
