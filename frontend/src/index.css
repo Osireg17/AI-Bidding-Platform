@@ -1,0 +1,148 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 14 14 16;
+    --surface: 20 20 24;
+    --surface-raised: 26 26 32;
+    --border: 38 38 48;
+    --border-bright: 60 60 76;
+
+    --gold: 212 170 80;
+    --gold-bright: 240 196 96;
+    --gold-dim: 140 108 44;
+
+    --text-primary: 230 228 220;
+    --text-secondary: 140 136 128;
+    --text-dim: 80 78 74;
+
+    --red: 220 80 60;
+    --green: 80 180 120;
+    --amber: 220 160 60;
+
+    --radius: 4px;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  background: rgb(var(--background));
+}
+
+body {
+  font-family: 'Syne', sans-serif;
+  background: rgb(var(--background));
+  color: rgb(var(--text-primary));
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scanline overlay for terminal feel */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+.font-mono {
+  font-family: 'DM Mono', monospace;
+}
+
+/* Bid row entry animation */
+@keyframes bid-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+    background: rgba(212, 170, 80, 0.12);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    background: transparent;
+  }
+}
+
+.bid-row-new {
+  animation: bid-enter 0.5s ease-out forwards;
+}
+
+/* Pulse for live dot */
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.8); }
+}
+
+/* Price flash */
+@keyframes price-flash {
+  0% { color: rgb(var(--gold-bright)); }
+  100% { color: rgb(var(--gold)); }
+}
+
+/* Winner reveal */
+@keyframes winner-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.winner-reveal {
+  animation: winner-reveal 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Countdown urgency */
+@keyframes tick-urgent {
+  0%, 100% { color: rgb(var(--red)); }
+  50% { color: rgba(var(--red), 0.6); }
+}
+
+/* Noise texture */
+.noise {
+  position: relative;
+}
+.noise::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0.4;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: rgb(var(--surface));
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--border-bright));
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--gold-dim));
+}
