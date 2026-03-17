@@ -64,8 +64,7 @@ func (c *AuctionServiceClient) GetActiveAuction(ctx context.Context) (*domain.Au
 		if a.Status == "active" || a.Status == "ending_soon" {
 			endTime, err := time.Parse(time.RFC3339, a.EndTime)
 			if err != nil {
-				c.logger.Error("failed to parse auction end_time", zap.Int64("auction_id", a.ID), zap.Error(err))
-				endTime = time.Time{}
+				return nil, fmt.Errorf("parse end_time for auction %d: %w", a.ID, err)
 			}
 			return &domain.AuctionView{
 				ID:           a.ID,
