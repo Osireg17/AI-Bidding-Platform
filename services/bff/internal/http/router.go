@@ -7,11 +7,12 @@ import (
 	"go.uber.org/zap"
 )
 
-func NewRouter(handler *BFFHandler, logger *zap.Logger) *gin.Engine {
+func NewRouter(handler *BFFHandler, logger *zap.Logger, allowedOrigin string) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 
 	r.Use(gin.Recovery())
+	r.Use(corsMiddleware(allowedOrigin))
 	r.Use(correlationIDMiddleware())
 	r.Use(requestLoggingMiddleware(logger))
 

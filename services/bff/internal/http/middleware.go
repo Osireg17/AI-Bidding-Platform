@@ -6,6 +6,21 @@ import (
 	"go.uber.org/zap"
 )
 
+func corsMiddleware(allowedOrigin string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", allowedOrigin)
+		c.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, X-Correlation-ID")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
+	}
+}
+
 func correlationIDMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		correlationID := c.GetHeader("X-Correlation-ID")

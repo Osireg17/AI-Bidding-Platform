@@ -60,7 +60,7 @@ func main() {
 	hydrate(context.Background(), stateStore, auctionClient, bidClient, logger)
 
 	handler := bffhttp.NewBFFHandler(stateStore, eventBroadcaster, logger)
-	router := bffhttp.NewRouter(handler, logger)
+	router := bffhttp.NewRouter(handler, logger, cfg.AllowedOrigin)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	srv := &http.Server{

@@ -12,6 +12,7 @@ type Config struct {
 	BidServiceURL     string
 	RabbitMQURL       string
 	LogLevel          string
+	AllowedOrigin     string
 }
 
 func Load() (*Config, error) {
@@ -24,6 +25,7 @@ func Load() (*Config, error) {
 	bidServiceURL := getEnv("BID_SERVICE_URL", "")
 	rabbitMQURL := getEnv("RABBITMQ_URL", "")
 	logLevel := getEnv("LOG_LEVEL", "info")
+	allowedOrigin := getEnv("ALLOWED_ORIGIN", "*")
 
 	if auctionServiceURL == "" {
 		return nil, fmt.Errorf("AUCTION_SERVICE_URL is required")
@@ -41,6 +43,7 @@ func Load() (*Config, error) {
 		BidServiceURL:     bidServiceURL,
 		RabbitMQURL:       rabbitMQURL,
 		LogLevel:          logLevel,
+		AllowedOrigin:     allowedOrigin,
 	}, nil
 
 }

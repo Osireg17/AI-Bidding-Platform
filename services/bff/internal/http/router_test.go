@@ -14,7 +14,7 @@ func TestRouter_Health(t *testing.T) {
 	broadcaster := newFakeBroadcaster()
 	close(broadcaster.ch)
 
-	router := NewRouter(newTestHandler(store, broadcaster), zap.NewNop())
+	router := NewRouter(newTestHandler(store, broadcaster), zap.NewNop(), "*")
 
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/health", nil))
@@ -27,7 +27,7 @@ func TestRouter_StateRoute(t *testing.T) {
 	store := &fakeStore{}
 	broadcaster := newFakeBroadcaster()
 
-	router := NewRouter(newTestHandler(store, broadcaster), zap.NewNop())
+	router := NewRouter(newTestHandler(store, broadcaster), zap.NewNop(), "*")
 
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/state", nil))
@@ -36,7 +36,7 @@ func TestRouter_StateRoute(t *testing.T) {
 }
 
 func TestRouter_CorrelationIDMiddleware_GeneratesID(t *testing.T) {
-	router := NewRouter(newTestHandler(&fakeStore{}, newFakeBroadcaster()), zap.NewNop())
+	router := NewRouter(newTestHandler(&fakeStore{}, newFakeBroadcaster()), zap.NewNop(), "*")
 
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/health", nil))
@@ -45,7 +45,7 @@ func TestRouter_CorrelationIDMiddleware_GeneratesID(t *testing.T) {
 }
 
 func TestRouter_CorrelationIDMiddleware_EchoesExistingID(t *testing.T) {
-	router := NewRouter(newTestHandler(&fakeStore{}, newFakeBroadcaster()), zap.NewNop())
+	router := NewRouter(newTestHandler(&fakeStore{}, newFakeBroadcaster()), zap.NewNop(), "*")
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -56,7 +56,7 @@ func TestRouter_CorrelationIDMiddleware_EchoesExistingID(t *testing.T) {
 }
 
 func TestRouter_NotFound(t *testing.T) {
-	router := NewRouter(newTestHandler(&fakeStore{}, newFakeBroadcaster()), zap.NewNop())
+	router := NewRouter(newTestHandler(&fakeStore{}, newFakeBroadcaster()), zap.NewNop(), "*")
 
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/unknown", nil))
