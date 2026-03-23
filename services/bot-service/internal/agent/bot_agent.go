@@ -22,7 +22,7 @@ import (
 
 // modelFallbackChain is tried in order when a model returns a rate-limit error.
 var modelFallbackChain = []string{
-	"gemini-2.5-flash-preview-05-20",
+	"gemini-2.5-flash",
 	"gemini-2.0-flash",
 }
 
