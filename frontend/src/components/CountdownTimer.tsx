@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { cn } from '@/lib/utils'
 
 interface CountdownTimerProps {
   endTime: string
@@ -31,13 +32,7 @@ export function CountdownTimer({ endTime, urgent }: CountdownTimerProps) {
 
   if (remaining <= 0) {
     return (
-      <span
-        style={{
-          fontFamily: "'DM Mono', monospace",
-          fontSize: 13,
-          color: 'rgb(80, 78, 74)',
-        }}
-      >
+      <span className="font-mono text-sm text-muted-foreground">
         Ended
       </span>
     )
@@ -45,16 +40,11 @@ export function CountdownTimer({ endTime, urgent }: CountdownTimerProps) {
 
   return (
     <span
-      style={{
-        fontFamily: "'DM Mono', monospace",
-        fontSize: 22,
-        fontWeight: 500,
-        letterSpacing: '-0.02em',
-        lineHeight: 1,
-        color: urgent ? 'rgb(220, 80, 60)' : 'rgb(230, 228, 220)',
-        animation: urgent ? 'tick-urgent 1s ease-in-out infinite' : undefined,
-        tabularNums: 'tabular-nums',
-      } as React.CSSProperties}
+      className={cn(
+        'font-mono text-2xl font-medium tracking-tight leading-none tabular-nums',
+        urgent ? 'text-destructive' : 'text-foreground',
+      )}
+      style={{ animation: urgent ? 'tick-urgent 1s ease-in-out infinite' : undefined }}
     >
       {formatDuration(remaining)}
     </span>

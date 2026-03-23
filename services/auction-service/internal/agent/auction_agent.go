@@ -53,7 +53,7 @@ When asked to generate an auction item, you MUST call the create_auction_item to
 - title: A short, specific item name (e.g. "Vintage Rolex Submariner", "2019 MacBook Pro 16-inch")
 - description: 1-2 sentences describing the item and why it's valuable
 - start_price: A realistic starting price in GBP for the item (consider its actual market value — range from £1 to £10,000)
-- duration_sec: How long the auction should run in seconds (between 1500 and 1800 seconds)
+- duration_sec: How long the auction should run in seconds (always use exactly 1800 seconds — 30 minutes)
 
 Vary the items — mix electronics, collectibles, sports items, fashion, art, books, and more.
 Make the items feel real and specific, not generic.`

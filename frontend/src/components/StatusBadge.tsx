@@ -1,27 +1,25 @@
+import { cn } from '@/lib/utils'
 import type { AuctionStatus } from '@/types/auction'
 
 interface StatusBadgeProps {
   status: AuctionStatus
 }
 
-const STATUS_CONFIG: Record<AuctionStatus, { label: string; color: string; bg: string; dot: string }> = {
+const STATUS_CONFIG: Record<AuctionStatus, { label: string; className: string; dotClass: string }> = {
   active: {
     label: 'LIVE',
-    color: 'rgb(80, 180, 120)',
-    bg: 'rgba(80, 180, 120, 0.1)',
-    dot: 'rgb(80, 180, 120)',
+    className: 'bg-green-500/10 border border-green-500/20 text-green-400',
+    dotClass: 'bg-green-400',
   },
   ending_soon: {
     label: 'ENDING SOON',
-    color: 'rgb(220, 160, 60)',
-    bg: 'rgba(220, 160, 60, 0.1)',
-    dot: 'rgb(220, 160, 60)',
+    className: 'bg-amber-500/10 border border-amber-500/20 text-amber-400',
+    dotClass: 'bg-amber-400',
   },
   closed: {
     label: 'CLOSED',
-    color: 'rgb(80, 78, 74)',
-    bg: 'rgba(80, 78, 74, 0.15)',
-    dot: 'rgb(80, 78, 74)',
+    className: 'bg-muted border border-border text-muted-foreground',
+    dotClass: 'bg-muted-foreground',
   },
 }
 
@@ -29,39 +27,12 @@ export function StatusBadge({ status }: StatusBadgeProps) {
   const cfg = STATUS_CONFIG[status]
 
   return (
-    <div
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 5,
-        padding: '4px 10px',
-        borderRadius: 3,
-        background: cfg.bg,
-        border: `1px solid ${cfg.color}22`,
-        flexShrink: 0,
-      }}
-    >
+    <div className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-sm shrink-0 font-mono text-[9px] tracking-widest font-medium', cfg.className)}>
       <span
-        style={{
-          width: 5,
-          height: 5,
-          borderRadius: '50%',
-          background: cfg.dot,
-          flexShrink: 0,
-          animation: status === 'active' ? 'live-pulse 2s ease-in-out infinite' : undefined,
-        }}
+        className={cn('w-1.5 h-1.5 rounded-full shrink-0', cfg.dotClass)}
+        style={{ animation: status === 'active' ? 'live-pulse 2s ease-in-out infinite' : undefined }}
       />
-      <span
-        style={{
-          fontFamily: "'DM Mono', monospace",
-          fontSize: 9,
-          letterSpacing: '0.12em',
-          color: cfg.color,
-          fontWeight: 500,
-        }}
-      >
-        {cfg.label}
-      </span>
+      {cfg.label}
     </div>
   )
 }
