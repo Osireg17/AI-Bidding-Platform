@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/Osireg17/AI-Bidding-Platform/services/bot-service/internal/bidclient"
@@ -46,20 +45,16 @@ type AuctionContext struct {
 	TriggerEvent string
 }
 
-const bidCooldown = 45 * time.Second
-
 // BotAgent wraps an ADK llmagent for a single bot personality.
 type BotAgent struct {
-	bot           *domain.Bot
-	agent         adkagent.Agent
-	bidClient     *bidclient.BidServiceClient
-	repo          domain.BotBidRepository
-	logger        *zap.Logger
-	mu            sync.Mutex
-	lastEvaluated time.Time
-	geminiAPIKey  string
-	placeBidTool  adktool.Tool
-	instruction   string
+	bot          *domain.Bot
+	agent        adkagent.Agent
+	bidClient    *bidclient.BidServiceClient
+	repo         domain.BotBidRepository
+	logger       *zap.Logger
+	geminiAPIKey string
+	placeBidTool adktool.Tool
+	instruction  string
 }
 
 type placeBidArgs struct {
@@ -177,19 +172,6 @@ func NewBotAgent(ctx context.Context, bot *domain.Bot, geminiAPIKey string, bidC
 }
 
 func (ba *BotAgent) Evaluate(ctx context.Context, ac AuctionContext) error {
-	ba.mu.Lock()
-	if !ba.lastEvaluated.IsZero() && time.Since(ba.lastEvaluated) < bidCooldown {
-		remaining := bidCooldown - time.Since(ba.lastEvaluated)
-		ba.mu.Unlock()
-		ba.logger.Debug("bot on cooldown, skipping evaluation",
-			zap.String("bot", ba.bot.Name),
-			zap.Int64("auction_id", ac.AuctionID),
-			zap.Duration("remaining", remaining),
-		)
-		return nil
-	}
-	ba.lastEvaluated = time.Now()
-	ba.mu.Unlock()
 
 	minBid := ac.HighestBid
 	if minBid == 0 {
