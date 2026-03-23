@@ -2,7 +2,9 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/Osireg17/AI-Bidding-Platform/services/bot-service/internal/bidclient"
@@ -18,6 +20,21 @@ import (
 	"google.golang.org/genai"
 )
 
+// modelFallbackChain is tried in order when a model returns a rate-limit error.
+var modelFallbackChain = []string{
+	"gemini-2.5-flash-preview-05-20",
+	"gemini-2.0-flash",
+}
+
+// isRateLimit reports whether err is a Gemini 429 / resource-exhausted response.
+func isRateLimit(err error) bool {
+	var apiErr genai.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Code == 429
+	}
+	return false
+}
+
 // AuctionContext holds the information passed to a bot agent for evaluation.
 type AuctionContext struct {
 	AuctionID    int64
@@ -29,13 +46,20 @@ type AuctionContext struct {
 	TriggerEvent string
 }
 
+const bidCooldown = 60 * time.Second
+
 // BotAgent wraps an ADK llmagent for a single bot personality.
 type BotAgent struct {
-	bot       *domain.Bot
-	agent     adkagent.Agent
-	bidClient *bidclient.BidServiceClient
-	repo      domain.BotBidRepository
-	logger    *zap.Logger
+	bot           *domain.Bot
+	agent         adkagent.Agent
+	bidClient     *bidclient.BidServiceClient
+	repo          domain.BotBidRepository
+	logger        *zap.Logger
+	mu            sync.Mutex
+	lastEvaluated time.Time
+	geminiAPIKey  string
+	placeBidTool  adktool.Tool
+	instruction   string
 }
 
 type placeBidArgs struct {
@@ -127,7 +151,7 @@ func NewBotAgent(ctx context.Context, bot *domain.Bot, geminiAPIKey string, bidC
 		return nil, fmt.Errorf("unknown bot personality: %s", bot.Personality)
 	}
 
-	llm, err := gemini.NewModel(ctx, "gemini-3-flash-preview", &genai.ClientConfig{
+	llm, err := gemini.NewModel(ctx, modelFallbackChain[0], &genai.ClientConfig{
 		APIKey: geminiAPIKey,
 	})
 	if err != nil {
@@ -146,32 +170,26 @@ func NewBotAgent(ctx context.Context, bot *domain.Bot, geminiAPIKey string, bidC
 	}
 
 	ba.agent = a
+	ba.geminiAPIKey = geminiAPIKey
+	ba.placeBidTool = placeBidTool
+	ba.instruction = instruction
 	return ba, nil
 }
 
 func (ba *BotAgent) Evaluate(ctx context.Context, ac AuctionContext) error {
-	sessionSvc := session.InMemoryService()
-
-	userID := fmt.Sprintf("bot-%d", ba.bot.ID)
-	sessionID := fmt.Sprintf("auction-%d-%d", ac.AuctionID, time.Now().UnixNano())
-
-	_, err := sessionSvc.Create(ctx, &session.CreateRequest{
-		AppName:   ba.bot.Name,
-		UserID:    userID,
-		SessionID: sessionID,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create session: %w", err)
+	ba.mu.Lock()
+	if !ba.lastEvaluated.IsZero() && time.Since(ba.lastEvaluated) < bidCooldown {
+		remaining := bidCooldown - time.Since(ba.lastEvaluated)
+		ba.mu.Unlock()
+		ba.logger.Debug("bot on cooldown, skipping evaluation",
+			zap.String("bot", ba.bot.Name),
+			zap.Int64("auction_id", ac.AuctionID),
+			zap.Duration("remaining", remaining),
+		)
+		return nil
 	}
-
-	r, err := runner.New(runner.Config{
-		AppName:        ba.bot.Name,
-		Agent:          ba.agent,
-		SessionService: sessionSvc,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create runner: %w", err)
-	}
+	ba.lastEvaluated = time.Now()
+	ba.mu.Unlock()
 
 	minBid := ac.HighestBid
 	if minBid == 0 {
@@ -183,12 +201,90 @@ func (ba *BotAgent) Evaluate(ctx context.Context, ac AuctionContext) error {
 		minBid, ac.EndTime.Format(time.RFC3339), ac.TriggerEvent, minBid,
 	), genai.RoleUser)
 
+	return ba.runWithFallback(ctx, msg)
+}
+
+// runWithFallback attempts each model in modelFallbackChain in order.
+// On a 429 it logs, waits 30 s, then tries the next model.
+func (ba *BotAgent) runWithFallback(ctx context.Context, msg *genai.Content) error {
+	const rateLimitBackoff = 30 * time.Second
+
+	for i, modelName := range modelFallbackChain {
+		ag, err := ba.buildAgent(ctx, modelName)
+		if err != nil {
+			return fmt.Errorf("failed to build agent with model %s: %w", modelName, err)
+		}
+
+		runErr := ba.runAgent(ctx, ag, msg)
+		if runErr == nil {
+			return nil
+		}
+
+		if isRateLimit(runErr) && i < len(modelFallbackChain)-1 {
+			ba.logger.Warn("rate limited, falling back to next model",
+				zap.String("bot", ba.bot.Name),
+				zap.String("model", modelName),
+				zap.String("next_model", modelFallbackChain[i+1]),
+				zap.Duration("backoff", rateLimitBackoff),
+			)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(rateLimitBackoff):
+			}
+			continue
+		}
+
+		return fmt.Errorf("agent run error (model=%s): %w", modelName, runErr)
+	}
+
+	return fmt.Errorf("all models exhausted for bot %s", ba.bot.Name)
+}
+
+func (ba *BotAgent) buildAgent(ctx context.Context, modelName string) (adkagent.Agent, error) {
+	llm, err := gemini.NewModel(ctx, modelName, &genai.ClientConfig{
+		APIKey: ba.geminiAPIKey,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create gemini model %s: %w", modelName, err)
+	}
+
+	return llmagent.New(llmagent.Config{
+		Name:        ba.bot.Name,
+		Description: string(ba.bot.Personality) + " bidding bot",
+		Model:       llm,
+		Instruction: ba.instruction,
+		Tools:       []adktool.Tool{ba.placeBidTool},
+	})
+}
+
+func (ba *BotAgent) runAgent(ctx context.Context, ag adkagent.Agent, msg *genai.Content) error {
+	sessionSvc := session.InMemoryService()
+	userID := fmt.Sprintf("bot-%d", ba.bot.ID)
+	sessionID := fmt.Sprintf("auction-%d-%d", ba.bot.ID, time.Now().UnixNano())
+
+	if _, err := sessionSvc.Create(ctx, &session.CreateRequest{
+		AppName:   ba.bot.Name,
+		UserID:    userID,
+		SessionID: sessionID,
+	}); err != nil {
+		return fmt.Errorf("failed to create session: %w", err)
+	}
+
+	r, err := runner.New(runner.Config{
+		AppName:        ba.bot.Name,
+		Agent:          ag,
+		SessionService: sessionSvc,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create runner: %w", err)
+	}
+
 	for event, err := range r.Run(ctx, userID, sessionID, msg, adkagent.RunConfig{}) {
 		if err != nil {
-			return fmt.Errorf("agent run error: %w", err)
+			return err
 		}
 		_ = event
 	}
-
 	return nil
 }

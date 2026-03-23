@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"time"
 
 	"github.com/Osireg17/AI-Bidding-Platform/services/auction-service/internal/agent"
@@ -123,9 +122,9 @@ func (s *AuctionService) ProcessExpiredAuctions(ctx context.Context) error {
 			zap.Float64("winning_amount", winningAmount),
 		)
 
-		// After closing, wait a random delay then generate and create the next auction.
+		// After closing, wait one hour then generate and create the next auction.
 		if s.auctionAgent != nil {
-			delay := time.Duration(rand.Int63n(int64(5 * time.Minute)))
+			delay := 1 * time.Hour
 			s.logger.Info("scheduling next auction", zap.Duration("delay", delay))
 
 			select {

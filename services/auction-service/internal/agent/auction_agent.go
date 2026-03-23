@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -15,6 +16,21 @@ import (
 	"google.golang.org/adk/tool/functiontool"
 	"google.golang.org/genai"
 )
+
+// modelFallbackChain is tried in order when a model returns a rate-limit error.
+var modelFallbackChain = []string{
+	"gemini-2.5-flash-preview-05-20",
+	"gemini-2.0-flash",
+}
+
+// isRateLimit reports whether err is a Gemini 429 response.
+func isRateLimit(err error) bool {
+	var apiErr genai.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Code == 429
+	}
+	return false
+}
 
 // GeneratedAuction holds the LLM-generated auction item fields.
 type GeneratedAuction struct {
@@ -37,7 +53,7 @@ When asked to generate an auction item, you MUST call the create_auction_item to
 - title: A short, specific item name (e.g. "Vintage Rolex Submariner", "2019 MacBook Pro 16-inch")
 - description: 1-2 sentences describing the item and why it's valuable
 - start_price: A realistic starting price in GBP for the item (consider its actual market value — range from £1 to £10,000)
-- duration_sec: How long the auction should run in seconds (between 60 and 300 seconds)
+- duration_sec: How long the auction should run in seconds (between 300 and 600 seconds)
 
 Vary the items — mix electronics, collectibles, sports items, fashion, art, books, and more.
 Make the items feel real and specific, not generic.`
@@ -51,8 +67,37 @@ func NewAuctionAgent(geminiAPIKey string, logger *zap.Logger) *AuctionAgent {
 }
 
 // Generate asks the Gemini LLM to create a new auction item.
-// The agent is re-created per call so the captured closure is always fresh.
+// On a 429 it waits 30 s and retries with the next model in the fallback chain.
 func (a *AuctionAgent) Generate(ctx context.Context) (*GeneratedAuction, error) {
+	const rateLimitBackoff = 30 * time.Second
+
+	for i, modelName := range modelFallbackChain {
+		result, err := a.generateWithModel(ctx, modelName)
+		if err == nil {
+			return result, nil
+		}
+
+		if isRateLimit(err) && i < len(modelFallbackChain)-1 {
+			a.logger.Warn("rate limited generating auction, falling back to next model",
+				zap.String("model", modelName),
+				zap.String("next_model", modelFallbackChain[i+1]),
+				zap.Duration("backoff", rateLimitBackoff),
+			)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(rateLimitBackoff):
+			}
+			continue
+		}
+
+		return nil, err
+	}
+
+	return nil, fmt.Errorf("all models exhausted generating auction item")
+}
+
+func (a *AuctionAgent) generateWithModel(ctx context.Context, modelName string) (*GeneratedAuction, error) {
 	var captured *GeneratedAuction
 
 	createItemTool, err := functiontool.New(functiontool.Config{
@@ -66,11 +111,11 @@ func (a *AuctionAgent) Generate(ctx context.Context) (*GeneratedAuction, error) 
 		return nil, fmt.Errorf("failed to create tool: %w", err)
 	}
 
-	llm, err := gemini.NewModel(ctx, "gemini-3-flash-preview", &genai.ClientConfig{
+	llm, err := gemini.NewModel(ctx, modelName, &genai.ClientConfig{
 		APIKey: a.geminiAPIKey,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create gemini model: %w", err)
+		return nil, fmt.Errorf("failed to create gemini model %s: %w", modelName, err)
 	}
 
 	ag, err := llmagent.New(llmagent.Config{
@@ -109,7 +154,7 @@ func (a *AuctionAgent) Generate(ctx context.Context) (*GeneratedAuction, error) 
 
 	for event, err := range r.Run(ctx, userID, sessionID, msg, adkagent.RunConfig{}) {
 		if err != nil {
-			return nil, fmt.Errorf("agent run error: %w", err)
+			return nil, err
 		}
 		_ = event
 	}
@@ -119,6 +164,7 @@ func (a *AuctionAgent) Generate(ctx context.Context) (*GeneratedAuction, error) 
 	}
 
 	a.logger.Info("auction item generated",
+		zap.String("model", modelName),
 		zap.String("title", captured.Title),
 		zap.Float64("start_price", captured.StartPrice),
 		zap.Int("duration_sec", captured.DurationSec),
