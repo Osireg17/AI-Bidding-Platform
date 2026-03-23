@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"time"
 
 	"github.com/Osireg17/AI-Bidding-Platform/services/bot-service/internal/bidclient"
@@ -172,6 +173,12 @@ func NewBotAgent(ctx context.Context, bot *domain.Bot, geminiAPIKey string, bidC
 }
 
 func (ba *BotAgent) Evaluate(ctx context.Context, ac AuctionContext) error {
+	delay := time.Duration(5+rand.IntN(11)) * time.Second
+	select {
+	case <-time.After(delay):
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 
 	minBid := ac.HighestBid
 	if minBid == 0 {
