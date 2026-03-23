@@ -124,7 +124,7 @@ func (s *AuctionService) ProcessExpiredAuctions(ctx context.Context) error {
 
 		// After closing, wait one hour then generate and create the next auction.
 		if s.auctionAgent != nil {
-			delay := 1 * time.Hour
+			delay := 30 * time.Minute
 			s.logger.Info("scheduling next auction", zap.Duration("delay", delay))
 
 			select {

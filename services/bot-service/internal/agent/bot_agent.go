@@ -46,7 +46,7 @@ type AuctionContext struct {
 	TriggerEvent string
 }
 
-const bidCooldown = 60 * time.Second
+const bidCooldown = 45 * time.Second
 
 // BotAgent wraps an ADK llmagent for a single bot personality.
 type BotAgent struct {
