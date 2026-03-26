@@ -227,6 +227,11 @@ func (c *BotEventConsumer) handleDelivery(ctx context.Context, msg delivery) err
 	return nil
 }
 
+// fanOut distributes auction context evaluation across the provided bots concurrently.
+// Each bot is retried up to maxBotAttempts times with exponential backoff.
+//
+// If any bot returns ErrSpendingCapExhausted the entire fanOut short-circuits and
+// returns a non-retryable error — retrying or requeuing would just burn more quota.
 func (c *BotEventConsumer) fanOut(ctx context.Context, bots []BotEvaluator, ac agent.AuctionContext) error {
 	if len(bots) == 0 {
 		return nil
@@ -235,6 +240,7 @@ func (c *BotEventConsumer) fanOut(ctx context.Context, bots []BotEvaluator, ac a
 	type botResult struct {
 		name    string
 		success bool
+		err     error
 	}
 
 	results := make(chan botResult, len(bots))
@@ -246,6 +252,11 @@ func (c *BotEventConsumer) fanOut(ctx context.Context, bots []BotEvaluator, ac a
 				lastErr = bot.Evaluate(ctx, ac)
 				if lastErr == nil {
 					results <- botResult{name: bot.Name(), success: true}
+					return
+				}
+
+				if errors.Is(lastErr, agent.ErrSpendingCapExhausted) {
+					results <- botResult{name: bot.Name(), success: false, err: lastErr}
 					return
 				}
 
@@ -263,7 +274,7 @@ func (c *BotEventConsumer) fanOut(ctx context.Context, bots []BotEvaluator, ac a
 					select {
 					case <-time.After(delay):
 					case <-ctx.Done():
-						results <- botResult{name: bot.Name(), success: false}
+						results <- botResult{name: bot.Name(), success: false, err: ctx.Err()}
 						return
 					}
 				}
@@ -276,7 +287,7 @@ func (c *BotEventConsumer) fanOut(ctx context.Context, bots []BotEvaluator, ac a
 				zap.Int("attempts", maxBotAttempts),
 				zap.Error(lastErr),
 			)
-			results <- botResult{name: bot.Name(), success: false}
+			results <- botResult{name: bot.Name(), success: false, err: lastErr}
 		}(b)
 	}
 
@@ -289,8 +300,25 @@ func (c *BotEventConsumer) fanOut(ctx context.Context, bots []BotEvaluator, ac a
 			if r.success {
 				successCount++
 			}
+
+			// Check if this bot failed due to spending cap.
+			if errors.Is(r.err, agent.ErrSpendingCapExhausted) {
+				c.logger.Error("spending cap exhausted, dropping event",
+					zap.Int64("auction_id", ac.AuctionID),
+					zap.String("trigger", ac.TriggerEvent),
+					zap.Error(r.err),
+				)
+				// Drain remaining results from channel to avoid goroutine leaks.
+				go func(rem int) {
+					for i := 0; i < rem; i++ {
+						<-results
+					}
+				}(remaining)
+				return fmt.Errorf("%w: %w", errNonRetryable, r.err)
+			}
+
 		case <-ctx.Done():
-			return fmt.Errorf("fanOut cancelled: auction_id=%d trigger=%s", ac.AuctionID, ac.TriggerEvent)
+			return fmt.Errorf("fanOut cancelled: auction_id=%d trigger=%s: %w", ac.AuctionID, ac.TriggerEvent, ctx.Err())
 		}
 	}
 
