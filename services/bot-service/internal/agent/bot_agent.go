@@ -26,11 +26,28 @@ var modelFallbackChain = []string{
 	"gemini-2.0-flash",
 }
 
-// isRateLimit reports whether err is a Gemini 429 / resource-exhausted response.
+// ErrSpendingCapExhausted is returned when the Gemini project spending cap is hit.
+// Unlike a transient rate limit, no fallback model will help — they share the same project quota.
+var ErrSpendingCapExhausted = errors.New("gemini spending cap exhausted")
+
+// isRateLimit reports whether err is a transient Gemini 429 where a model
+// fallback may succeed (e.g. per-minute RPM on one model but not another).
 func isRateLimit(err error) bool {
 	var apiErr genai.APIError
 	if errors.As(err, &apiErr) {
-		return apiErr.Code == 429
+		// RESOURCE_EXHAUSTED means the whole project quota is gone — no model fallback helps.
+		// Only treat it as a retryable rate limit if the status is something else (e.g. per-key RPM).
+		return apiErr.Code == 429 && apiErr.Status != "RESOURCE_EXHAUSTED"
+	}
+	return false
+}
+
+// isSpendingCapExhausted reports whether err is a Gemini 429 caused by the
+// project spending cap being hit (Status: RESOURCE_EXHAUSTED).
+func isSpendingCapExhausted(err error) bool {
+	var apiErr genai.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Code == 429 && apiErr.Status == "RESOURCE_EXHAUSTED"
 	}
 	return false
 }
@@ -107,7 +124,7 @@ func NewBotAgent(ctx context.Context, bot *domain.Bot, geminiAPIKey string, bidC
 	}, func(toolCtx adktool.Context, args placeBidArgs) (placeBidResult, error) {
 		err := bidClient.PlaceBid(toolCtx, args.AuctionID, bot.ID, args.Amount)
 		if err != nil {
-			logger.Warn("bid rejected",
+			logger.Info("bid rejected",
 				zap.String("bot", bot.Name),
 				zap.Int64("auction_id", args.AuctionID),
 				zap.Float64("amount", args.Amount),
@@ -194,7 +211,9 @@ func (ba *BotAgent) Evaluate(ctx context.Context, ac AuctionContext) error {
 }
 
 // runWithFallback attempts each model in modelFallbackChain in order.
-// On a 429 it logs, waits 30 s, then tries the next model.
+// On a transient 429 it logs, waits 30 s, then tries the next model.
+// On a RESOURCE_EXHAUSTED 429 (spending cap) it returns ErrSpendingCapExhausted immediately —
+// no fallback model will help as they share the same project quota.
 func (ba *BotAgent) runWithFallback(ctx context.Context, msg *genai.Content) error {
 	const rateLimitBackoff = 30 * time.Second
 
@@ -207,6 +226,16 @@ func (ba *BotAgent) runWithFallback(ctx context.Context, msg *genai.Content) err
 		runErr := ba.runAgent(ctx, ag, msg)
 		if runErr == nil {
 			return nil
+		}
+
+		// Check spending cap BEFORE checking transient rate limit.
+		// Both are 429s but spending cap must short-circuit — no fallback helps.
+		if isSpendingCapExhausted(runErr) {
+			ba.logger.Error("spending cap exhausted, aborting evaluation",
+				zap.String("bot", ba.bot.Name),
+				zap.Error(runErr),
+			)
+			return fmt.Errorf("%w: %w", ErrSpendingCapExhausted, runErr)
 		}
 
 		if isRateLimit(runErr) && i < len(modelFallbackChain)-1 {

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/Osireg17/AI-Bidding-Platform/services/bot-service/internal/agent"
 	"github.com/Osireg17/AI-Bidding-Platform/services/bot-service/internal/bidclient"
@@ -37,12 +38,7 @@ func main() {
 	defer logger.Sync() //nolint:errcheck
 	logger = logger.With(zap.String("service", "bot-service"))
 
-	// 3. Set GOOGLE_API_KEY for ADK — must be set before NewBotAgent calls gemini.NewModel.
-	if err := os.Setenv("GOOGLE_API_KEY", cfg.GeminiAPIKey); err != nil {
-		logger.Fatal("failed to set GOOGLE_API_KEY", zap.Error(err))
-	}
-
-	// 4. Connect Postgres + ping + run migrations.
+	// 3. Connect Postgres + ping + run migrations.
 	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(cfg.DatabaseURL)))
 	db := bun.NewDB(sqldb, pgdialect.New())
 	defer db.Close()
@@ -86,16 +82,16 @@ func main() {
 	}
 	logger.Info("RabbitMQ consumer connected")
 
-	// 9. Start consumer in a goroutine.
-	consumerCtx, consumerCancel := context.WithCancel(context.Background())
-	consumerErrCh := make(chan error, 1)
+	// 9. Start the consumer under a window-aware scheduler.
+	// Active window: 09:00–21:00 UTC daily. Outside this window the consumer
+	// is paused and RabbitMQ messages queue up for processing when it resumes.
+	appCtx, appCancel := context.WithCancel(context.Background())
+	schedulerErrCh := make(chan error, 1)
 	go func() {
-		if err := consumer.Start(consumerCtx); err != nil {
-			consumerErrCh <- err
-		}
-		close(consumerErrCh)
+		schedulerErrCh <- runScheduled(appCtx, consumer, logger)
+		close(schedulerErrCh)
 	}()
-	logger.Info("bot event consumer started")
+	logger.Info("bot event consumer scheduler started")
 
 	// 10. Wait for SIGINT / SIGTERM.
 	quit := make(chan os.Signal, 1)
@@ -104,16 +100,16 @@ func main() {
 	select {
 	case sig := <-quit:
 		logger.Info("received shutdown signal", zap.String("signal", sig.String()))
-	case err := <-consumerErrCh:
+	case err := <-schedulerErrCh:
 		if err != nil {
-			logger.Error("consumer exited with error, initiating shutdown", zap.Error(err))
+			logger.Error("scheduler exited with error, initiating shutdown", zap.Error(err))
 		}
 	}
 
 	logger.Info("shutting down bot-service...")
 
 	// 11. Graceful shutdown.
-	consumerCancel()
+	appCancel()
 
 	if err := consumer.Close(); err != nil {
 		logger.Error("error closing RabbitMQ consumer", zap.Error(err))
@@ -124,4 +120,75 @@ func main() {
 	}
 
 	logger.Info("bot-service stopped")
+}
+
+// runScheduled is the window-aware scheduler for the bot event consumer.
+func runScheduled(ctx context.Context, consumer *mq.BotEventConsumer, logger *zap.Logger) error {
+	const (
+		windowStart = 9  // hour UTC
+		windowEnd   = 21 // hour UTC
+	)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+
+		now := time.Now().UTC()
+		inWindow := now.Hour() >= windowStart && now.Hour() < windowEnd
+
+		if inWindow {
+			logger.Info("active window started, starting consumer")
+			consumerCtx, consumerCancel := context.WithCancel(ctx)
+
+			consumerErrCh := make(chan error, 1)
+			go func() {
+				consumerErrCh <- consumer.Start(consumerCtx)
+			}()
+
+			// Calculate duration until window closes (21:00 UTC today).
+			windowCloseToday := time.Date(now.Year(), now.Month(), now.Day(), windowEnd, 0, 0, 0, time.UTC)
+			durationUntilClose := time.Until(windowCloseToday)
+
+			select {
+			case <-time.After(durationUntilClose):
+				logger.Info("active window ended, pausing consumer")
+				consumerCancel()
+				<-consumerErrCh // Drain the channel to allow the goroutine to exit and avoid leaks
+			case err := <-consumerErrCh:
+				consumerCancel()
+				if err != nil {
+					return fmt.Errorf("consumer error: %w", err)
+				}
+			case <-ctx.Done():
+				consumerCancel()
+				// Drain the channel (if the goroutine already finished or finishes shortly)
+				// without blocking the shutdown process indefinitely.
+				select {
+				case <-consumerErrCh:
+				case <-time.After(1 * time.Second):
+				}
+				return nil
+			}
+		} else {
+			logger.Info("outside active window, consumer paused")
+
+			// Calculate duration until window opens (09:00 UTC).
+			// If current hour >= windowEnd, next open is 09:00 tomorrow.
+			nextOpen := time.Date(now.Year(), now.Month(), now.Day(), windowStart, 0, 0, 0, time.UTC)
+			if now.Hour() >= windowEnd {
+				nextOpen = nextOpen.Add(24 * time.Hour)
+			}
+			durationUntilOpen := time.Until(nextOpen)
+
+			select {
+			case <-time.After(durationUntilOpen):
+				// loop back around — inWindow will now be true
+			case <-ctx.Done():
+				return nil
+			}
+		}
+	}
 }

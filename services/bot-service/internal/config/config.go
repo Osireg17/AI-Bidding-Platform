@@ -24,7 +24,7 @@ func Load() (*Config, error) {
 	rabbitURL := getEnv("RABBITMQ_URL", "")
 	bidServiceURL := getEnv("BID_SERVICE_URL", "")
 	logLevel := getEnv("LOG_LEVEL", "info")
-	geminiAPIKey := getEnv("GEMINI_API_KEY", "")
+	googleAPIKey := getEnv("GOOGLE_API_KEY", "")
 
 	if dbURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
@@ -35,8 +35,8 @@ func Load() (*Config, error) {
 	if bidServiceURL == "" {
 		return nil, fmt.Errorf("BID_SERVICE_URL is required")
 	}
-	if geminiAPIKey == "" {
-		return nil, fmt.Errorf("GEMINI_API_KEY is required")
+	if googleAPIKey == "" {
+		return nil, fmt.Errorf("GOOGLE_API_KEY is required")
 	}
 
 	return &Config{
@@ -45,7 +45,7 @@ func Load() (*Config, error) {
 		RabbitMQURL:   rabbitURL,
 		BidServiceURL: bidServiceURL,
 		LogLevel:      logLevel,
-		GeminiAPIKey:  geminiAPIKey,
+		GeminiAPIKey:  googleAPIKey,
 	}, nil
 }
 
