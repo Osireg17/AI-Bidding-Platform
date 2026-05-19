@@ -28,7 +28,9 @@
   3. `grep "banking-service" go.work` returns the module path — workspace resolves the new module
   4. Domain types (`Wallet`, `Item`) and all port interfaces compile: `go build ./internal/domain/...` exits 0
   5. `domain.ErrWalletNotFound`, `domain.ErrItemNotFound`, `domain.ErrInsufficientBalance`, `domain.ErrItemNotOwnedByBot` are defined and referenceable in tests
-**Plans**: TBD
+**Plans**: 2 plans
+  - [ ] 01-01-PLAN.md — Wave 1: go.work + go.mod + main.go stub + config.go (port 8084)
+  - [ ] 01-02-PLAN.md — Wave 2: domain types (Wallet, Item), sentinel errors + test, ports interfaces (withTx pattern)
 
 ### Phase 2: Repository Layer
 **Goal**: Wallet and item data can be persisted; tables are created idempotently at boot; four wallets are seeded with £1,000,000 each on first run and never reset
@@ -86,7 +88,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Service Foundation | 0/3 | Not started | - |
+| 1. Service Foundation | 0/2 | Not started | - |
 | 2. Repository Layer | 0/2 | Not started | - |
 | 3. Service + API Layer | 0/3 | Not started | - |
 | 4. Event Consumer + Entrypoint | 0/3 | Not started | - |
