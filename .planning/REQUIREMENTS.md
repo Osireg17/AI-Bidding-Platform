@@ -68,32 +68,30 @@ Deferred. Acknowledged but not in current roadmap.
 
 ## Traceability
 
-Updated by roadmapper. Phase mapping TBD.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | EVT-01 | — | Complete |
-| INF-01 | TBD | Pending |
-| INF-02 | TBD | Pending |
-| INF-03 | TBD | Pending |
-| INF-04 | TBD | Pending |
-| INF-05 | TBD | Pending |
-| WALL-01 | TBD | Pending |
-| WALL-02 | TBD | Pending |
-| WALL-03 | TBD | Pending |
-| ITEM-01 | TBD | Pending |
-| ITEM-02 | TBD | Pending |
-| BOT-01 | TBD | Pending |
-| BOT-02 | TBD | Pending |
-| BOT-03 | TBD | Pending |
-| BOT-04 | TBD | Pending |
-| BOT-05 | TBD | Pending |
+| INF-01 | Phase 1 | Pending |
+| INF-02 | Phase 2 | Pending |
+| INF-03 | Phase 4 | Pending |
+| INF-04 | Phase 1 | Pending |
+| INF-05 | Phase 4 | Pending |
+| WALL-01 | Phase 2 | Pending |
+| WALL-02 | Phase 3 | Pending |
+| WALL-03 | Phase 3 | Pending |
+| ITEM-01 | Phase 3 | Pending |
+| ITEM-02 | Phase 3 | Pending |
+| BOT-01 | Phase 5 | Pending |
+| BOT-02 | Phase 5 | Pending |
+| BOT-03 | Phase 5 | Pending |
+| BOT-04 | Phase 5 | Pending |
+| BOT-05 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 16 total (+ 1 validated)
-- Mapped to phases: 0 (TBD — roadmapper assigns)
-- Unmapped: 16 ⚠️
+- Mapped to phases: 16 / 16 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-05-19*
-*Last updated: 2026-05-19 after initial definition*
+*Last updated: 2026-05-19 — traceability updated by roadmapper*
