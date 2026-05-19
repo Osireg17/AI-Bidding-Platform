@@ -31,4 +31,5 @@ type AuctionEndedPayload struct {
 	WinningBid  float64 `json:"winning_bid,omitempty"`
 	TotalBids   int     `json:"total_bids"`
 	FinalStatus string  `json:"final_status"` // "sold" or "unsold"
+	Title       string  `json:"title"`
 }
