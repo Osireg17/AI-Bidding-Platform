@@ -43,3 +43,4 @@ docker-compose.override.yml
 # Temporary
 tmp/
 *.tmp
+docs/AI-Auction-Platform.drawio.png
