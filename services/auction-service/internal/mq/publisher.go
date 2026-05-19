@@ -64,6 +64,7 @@ func (p *AuctionPublisher) PublishAuctionEnded(ctx context.Context, auction *dom
 		WinnerBotID: auction.WinnerBotID,
 		WinningBid:  auction.CurrentPrice,
 		FinalStatus: finalStatus,
+		Title:       auction.Title,
 	}
 	envelope := events.NewEnvelope(events.RoutingKeyAuctionEnded, events.AuctionEventVersion, "", payload)
 	return p.base.Publish(ctx, events.RoutingKeyAuctionEnded, envelope)
