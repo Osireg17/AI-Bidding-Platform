@@ -22,8 +22,8 @@ import (
 
 // modelFallbackChain is tried in order when a model returns a rate-limit error.
 var modelFallbackChain = []string{
-	"gemini-2.5-flash",
-	"gemini-2.0-flash",
+	"gemini-3.5-flash",
+	"gemini-3.1-flash-lite",
 }
 
 // ErrSpendingCapExhausted is returned when the Gemini project spending cap is hit.
