@@ -2,7 +2,7 @@ package domain
 
 import "context"
 
-type WalletRespository interface {
+type WalletRepository interface {
 	Upsert(ctx context.Context, wallet *Wallet) error
 
 	GetByBotID(ctx context.Context, botID int64) (*Wallet, error)
@@ -25,7 +25,7 @@ type BankingService interface {
 
 	Buyout(ctx context.Context, itemID int64) (newBalance float64, err error)
 
-	RecordWin(ctx context.Context, auctionID, botID int64, winningBid float64, title string) error
+	RecordWin(ctx context.Context, auctionID, botID int64, winningBid float64, title string) (newBalance float64, err error)
 
 	SeedWallet(ctx context.Context) error
 }

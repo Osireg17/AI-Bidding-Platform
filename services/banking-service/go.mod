@@ -4,6 +4,8 @@ go 1.26.1
 
 require github.com/uptrace/bun v1.2.18
 
+require go.uber.org/multierr v1.10.0 // indirect
+
 require (
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
@@ -11,5 +13,6 @@ require (
 	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
+	go.uber.org/zap v1.28.0
 	golang.org/x/sys v0.41.0 // indirect
 )
