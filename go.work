@@ -1,4 +1,4 @@
-go 1.25.6
+go 1.26.1
 
 use (
 	./services/auction-service
@@ -6,4 +6,5 @@ use (
 	./services/bid-service
 	./services/bot-service
 	./shared
+	./services/banking-service
 )
