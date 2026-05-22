@@ -9,7 +9,7 @@ import (
 type WalletRepository interface {
 	Upsert(ctx context.Context, wallet *Wallet) error
 	GetByBotID(ctx context.Context, botID int64) (*Wallet, error)
-	UpdateBalance(ctx context.Context, botID int64, amount float64) error
+	UpdateBalance(ctx context.Context, botID int64, newBalance float64) error
 	WithTx(tx bun.IDB) WalletRepository
 }
 

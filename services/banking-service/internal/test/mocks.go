@@ -82,6 +82,7 @@ func (m *MockWalletRepository) UpdateBalance(ctx context.Context, botID int64, n
 	return m.UpdateBalanceErr
 }
 
+
 func (m *MockWalletRepository) WithTx(_ bun.IDB) domain.WalletRepository { return m }
 
 func (m *MockItemRepository) Create(ctx context.Context, item *domain.Item) error {
