@@ -17,7 +17,7 @@ func NewPostgresItemRepo(db *bun.DB) *PostgresItemRepo {
 	return &PostgresItemRepo{db: db}
 }
 
-func (r *PostgresItemRepo) withTx(tx bun.Tx) *PostgresItemRepo {
+func (r *PostgresItemRepo) WithTx(tx bun.IDB) domain.ItemRepository {
 	return &PostgresItemRepo{db: tx}
 }
 

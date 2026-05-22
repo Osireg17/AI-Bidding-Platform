@@ -16,8 +16,11 @@ func NewTestService(
 	itemRepo *testutil.MockItemRepository,
 	t *testing.T,
 ) *BankingService {
+	t.Helper()
 	logger := zap.NewNop()
-	return NewBankingService(walletRepo, itemRepo, logger)
+	svc := NewBankingService(nil, walletRepo, itemRepo, logger)
+	svc.tx = &testutil.MockTxRunner{}
+	return svc
 }
 
 func TestBankingService_Buyout(t *testing.T) {

@@ -2,19 +2,28 @@ package service
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/Osireg17/AI-Bidding-Platform/services/banking-service/internal/domain"
+	"github.com/uptrace/bun"
 	"go.uber.org/zap"
 )
 
+// TxRunner abstracts bun.DB.RunInTx so the service is testable without a real DB connection.
+type TxRunner interface {
+	RunInTx(ctx context.Context, opts *sql.TxOptions, fn func(ctx context.Context, tx bun.Tx) error) error
+}
+
 type BankingService struct {
+	tx         TxRunner
 	walletRepo domain.WalletRepository
 	itemRepo   domain.ItemRepository
 	logger     *zap.Logger
 }
 
-func NewBankingService(walletRepo domain.WalletRepository, itemRepo domain.ItemRepository, logger *zap.Logger) *BankingService {
+func NewBankingService(db *bun.DB, walletRepo domain.WalletRepository, itemRepo domain.ItemRepository, logger *zap.Logger) *BankingService {
 	return &BankingService{
+		tx:         db,
 		walletRepo: walletRepo,
 		itemRepo:   itemRepo,
 		logger:     logger,
@@ -26,7 +35,6 @@ func (s *BankingService) Buyout(ctx context.Context, itemID int64) (newBalance f
 	if err != nil {
 		return 0, err
 	}
-
 	if item == nil {
 		return 0, domain.ErrItemNotFound
 	}
@@ -41,22 +49,22 @@ func (s *BankingService) Buyout(ctx context.Context, itemID int64) (newBalance f
 	}
 
 	payout := item.PurchasePrice * 0.70
-	newBalance = wallet.Balance + payout
+	computed := wallet.Balance + payout
 
-	err = s.walletRepo.UpdateBalance(ctx, item.BotID, newBalance)
+	err = s.tx.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+		if err := s.walletRepo.WithTx(tx).UpdateBalance(ctx, item.BotID, computed); err != nil {
+			return err
+		}
+		return s.itemRepo.WithTx(tx).Delete(ctx, itemID)
+	})
 	if err != nil {
 		return 0, err
 	}
 
-	err = s.itemRepo.Delete(ctx, itemID)
-	if err != nil {
-		return 0, err
-	}
-
-	return newBalance, nil
+	return computed, nil
 }
 
-func (s *BankingService) RecordWin(ctx context.Context, botID int64, auctionID int64, title string, winningBid float64) (newBalance float64, err error) {
+func (s *BankingService) RecordWin(ctx context.Context, botID, auctionID int64, title string, winningBid float64) (newBalance float64, err error) {
 	wallet, err := s.walletRepo.GetByBotID(ctx, botID)
 	if err != nil {
 		return 0, err
@@ -66,19 +74,14 @@ func (s *BankingService) RecordWin(ctx context.Context, botID int64, auctionID i
 		return 0, domain.ErrWalletNotFound
 	}
 
-	newBalance = wallet.Balance - winningBid
+	computed := wallet.Balance - winningBid
 
-	if newBalance < 0 {
+	if computed < 0 {
 		s.logger.Warn("negative balance after recording win",
 			zap.Int64("bot_id", botID),
 			zap.Float64("winning_bid", winningBid),
-			zap.Float64("new_balance", newBalance),
+			zap.Float64("new_balance", computed),
 		)
-	}
-
-	err = s.walletRepo.UpdateBalance(ctx, botID, newBalance)
-	if err != nil {
-		return 0, err
 	}
 
 	item, err := domain.NewItem(botID, auctionID, title, winningBid)
@@ -86,12 +89,17 @@ func (s *BankingService) RecordWin(ctx context.Context, botID int64, auctionID i
 		return 0, err
 	}
 
-	err = s.itemRepo.Create(ctx, item)
+	err = s.tx.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+		if err := s.walletRepo.WithTx(tx).UpdateBalance(ctx, botID, computed); err != nil {
+			return err
+		}
+		return s.itemRepo.WithTx(tx).Create(ctx, item)
+	})
 	if err != nil {
 		return 0, err
 	}
 
-	return newBalance, nil
+	return computed, nil
 }
 
 func (s *BankingService) SeedWallets(ctx context.Context) error {

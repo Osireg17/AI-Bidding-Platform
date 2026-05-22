@@ -2,8 +2,10 @@ package test
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/Osireg17/AI-Bidding-Platform/services/banking-service/internal/domain"
+	"github.com/uptrace/bun"
 )
 
 type MockWalletRepository struct {
@@ -80,6 +82,8 @@ func (m *MockWalletRepository) UpdateBalance(ctx context.Context, botID int64, n
 	return m.UpdateBalanceErr
 }
 
+func (m *MockWalletRepository) WithTx(_ bun.IDB) domain.WalletRepository { return m }
+
 func (m *MockItemRepository) Create(ctx context.Context, item *domain.Item) error {
 	m.CreateCalls++
 	m.CreateArgs = append(m.CreateArgs, CreateItemArgs{Ctx: ctx, Item: item})
@@ -117,6 +121,16 @@ func (m *MockItemRepository) Delete(ctx context.Context, itemID int64) error {
 	m.DeleteCalls++
 	m.DeleteArgs = append(m.DeleteArgs, DeleteArgs{Ctx: ctx, ItemID: itemID})
 	return m.DeleteErr
+}
+
+func (m *MockItemRepository) WithTx(_ bun.IDB) domain.ItemRepository { return m }
+
+// MockTxRunner executes the closure directly without a real DB transaction.
+// Used in unit tests so the service's RunInTx calls work without a Postgres connection.
+type MockTxRunner struct{}
+
+func (m *MockTxRunner) RunInTx(ctx context.Context, _ *sql.TxOptions, fn func(context.Context, bun.Tx) error) error {
+	return fn(ctx, bun.Tx{})
 }
 
 // Compile-time interface guards.

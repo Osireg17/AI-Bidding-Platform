@@ -15,7 +15,7 @@ func NewPostgresWalletRepo(db *bun.DB) *PostgresWalletRepo {
 	return &PostgresWalletRepo{db: db}
 }
 
-func (r *PostgresWalletRepo) withTx(tx bun.Tx) *PostgresWalletRepo {
+func (r *PostgresWalletRepo) WithTx(tx bun.IDB) domain.WalletRepository {
 	return &PostgresWalletRepo{db: tx}
 }
 
