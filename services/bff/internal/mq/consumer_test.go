@@ -9,6 +9,7 @@ import (
 
 	"github.com/Osireg17/AI-Bidding-Platform/services/bff/internal/domain"
 	"github.com/Osireg17/AI-Bidding-Platform/shared/events"
+	"github.com/Osireg17/AI-Bidding-Platform/shared/pkg/messaging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -102,11 +103,9 @@ func (d *fakeDelivery) Nack(_ bool, requeue bool) error {
 }
 
 func newTestConsumer(store domain.StateStore, broadcaster domain.EventBroadcaster) *BFFEventConsumer {
-	return &BFFEventConsumer{
-		store:       store,
-		broadcaster: broadcaster,
-		logger:      zap.NewNop(),
-	}
+	c := &BFFEventConsumer{store: store, broadcaster: broadcaster, logger: zap.NewNop()}
+	c.BaseConsumer = messaging.NewBaseConsumerForTest(messaging.ConsumerConfig{}, c, zap.NewNop())
+	return c
 }
 
 func makeDelivery(t *testing.T, eventType string, payload any) *fakeDelivery {
@@ -365,7 +364,7 @@ func TestReUnmarshalPayload(t *testing.T) {
 		"end_time":    now.Add(time.Hour).Format(time.RFC3339),
 	}
 
-	result, err := reUnmarshalPayload[events.AuctionCreatedPayload](raw)
+	result, err := messaging.ReUnmarshalPayload[events.AuctionCreatedPayload](raw)
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(5), result.AuctionID)
@@ -377,14 +376,14 @@ func TestReUnmarshalPayload(t *testing.T) {
 }
 
 func TestReUnmarshalPayload_ReMarshalError(t *testing.T) {
-	_, err := reUnmarshalPayload[events.AuctionCreatedPayload](make(chan int))
+	_, err := messaging.ReUnmarshalPayload[events.AuctionCreatedPayload](make(chan int))
 
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "re-marshal payload")
 }
 
 func TestReUnmarshalPayload_UnmarshalError(t *testing.T) {
-	_, err := reUnmarshalPayload[events.AuctionCreatedPayload]("not-an-object")
+	_, err := messaging.ReUnmarshalPayload[events.AuctionCreatedPayload]("not-an-object")
 
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "unmarshal payload")
