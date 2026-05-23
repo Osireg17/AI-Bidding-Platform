@@ -10,6 +10,7 @@ import (
 
 	"github.com/Osireg17/AI-Bidding-Platform/services/bot-service/internal/agent"
 	"github.com/Osireg17/AI-Bidding-Platform/shared/events"
+	"github.com/Osireg17/AI-Bidding-Platform/shared/pkg/messaging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -73,7 +74,9 @@ func (d *fakeDelivery) Nack(_ bool, requeue bool) error {
 }
 
 func newTestConsumer(bots []BotEvaluator) *BotEventConsumer {
-	return &BotEventConsumer{bots: bots, logger: zap.NewNop()}
+	c := &BotEventConsumer{bots: bots, logger: zap.NewNop()}
+	c.BaseConsumer = messaging.NewBaseConsumerForTest(messaging.ConsumerConfig{}, c, zap.NewNop())
+	return c
 }
 
 func allFakeBots() []*fakeBot {
@@ -468,7 +471,7 @@ func TestBotsWithIDs_EmptyInput(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// reUnmarshalPayload
+// messaging.ReUnmarshalPayload
 // ---------------------------------------------------------------------------
 
 func TestReUnmarshalPayload_AuctionCreated(t *testing.T) {
@@ -481,7 +484,7 @@ func TestReUnmarshalPayload_AuctionCreated(t *testing.T) {
 		"start_time":  now.Format(time.RFC3339),
 		"end_time":    now.Add(24 * time.Hour).Format(time.RFC3339),
 	}
-	result, err := reUnmarshalPayload[events.AuctionCreatedPayload](raw)
+	result, err := messaging.ReUnmarshalPayload[events.AuctionCreatedPayload](raw)
 	require.NoError(t, err)
 	assert.Equal(t, int64(7), result.AuctionID)
 	assert.Equal(t, "Antique Clock", result.Title)
@@ -494,7 +497,7 @@ func TestReUnmarshalPayload_BidPlaced(t *testing.T) {
 		"bot_id":     float64(2),
 		"bid_amount": float64(250.0),
 	}
-	result, err := reUnmarshalPayload[events.BidPlacedPayload](raw)
+	result, err := messaging.ReUnmarshalPayload[events.BidPlacedPayload](raw)
 	require.NoError(t, err)
 	assert.Equal(t, int64(8), result.AuctionID)
 	assert.Equal(t, int64(2), result.BotID)
@@ -502,7 +505,7 @@ func TestReUnmarshalPayload_BidPlaced(t *testing.T) {
 }
 
 func TestReUnmarshalPayload_InvalidPayload_ReturnsError(t *testing.T) {
-	_, err := reUnmarshalPayload[events.AuctionCreatedPayload](make(chan int))
+	_, err := messaging.ReUnmarshalPayload[events.AuctionCreatedPayload](make(chan int))
 	require.Error(t, err)
 }
 
