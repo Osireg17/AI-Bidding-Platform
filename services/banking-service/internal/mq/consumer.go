@@ -13,7 +13,7 @@ const bankingServiceQueue = "banking.q"
 
 // BankingService defines the subset of the banking service used by the consumer.
 type BankingService interface {
-	RecordWin(ctx context.Context, auctionID int64, winnerBotID int64, amount float64) error
+	RecordWin(ctx context.Context, botID, auctionID int64, title string, winningBid float64) (float64, error)
 }
 
 type BankingEventConsumer struct {
@@ -63,7 +63,7 @@ func (c *BankingEventConsumer) handleAuctionEnded(ctx context.Context, envelope 
 		return nil
 	}
 
-	if err := c.svc.RecordWin(ctx, payload.AuctionID, payload.WinnerBotID, payload.WinningBid); err != nil {
+	if _, err := c.svc.RecordWin(ctx, payload.WinnerBotID, payload.AuctionID, payload.Title, payload.WinningBid); err != nil {
 		return fmt.Errorf("record win for auction %d: %w", payload.AuctionID, err)
 	}
 
