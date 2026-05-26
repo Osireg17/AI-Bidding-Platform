@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Osireg17/AI-Bidding-Platform/services/bot-service/internal/agent"
+	"github.com/Osireg17/AI-Bidding-Platform/services/bot-service/internal/bankingclient"
 	"github.com/Osireg17/AI-Bidding-Platform/services/bot-service/internal/bidclient"
 	"github.com/Osireg17/AI-Bidding-Platform/services/bot-service/internal/config"
 	"github.com/Osireg17/AI-Bidding-Platform/services/bot-service/internal/domain"
@@ -57,6 +58,9 @@ func main() {
 	bidClient := bidclient.NewBidServiceClient(cfg.BidServiceURL, logger)
 	logger.Info("bid service client initialised", zap.String("url", cfg.BidServiceURL))
 
+	bankingClient := bankingclient.NewBankingServiceClient(cfg.BankingServiceURL, logger)
+	logger.Info("banking service client initialised", zap.String("url", cfg.BankingServiceURL))
+
 	// 6. Init repo.
 	botBidRepo := repo.NewPostgresBotBidRepo(db)
 
@@ -64,7 +68,7 @@ func main() {
 	initCtx := context.Background()
 	bots := make([]mq.BotEvaluator, 0, len(domain.AllBots))
 	for _, bot := range domain.AllBots {
-		a, err := agent.NewBotAgent(initCtx, bot, cfg.GeminiAPIKey, bidClient, botBidRepo, logger)
+		a, err := agent.NewBotAgent(initCtx, bot, cfg.GeminiAPIKey, bidClient, bankingClient, botBidRepo, logger)
 		if err != nil {
 			logger.Fatal("failed to init bot agent",
 				zap.String("bot", bot.Name),

@@ -7,6 +7,7 @@ import (
 	"math/rand/v2"
 	"time"
 
+	"github.com/Osireg17/AI-Bidding-Platform/services/bot-service/internal/bankingclient"
 	"github.com/Osireg17/AI-Bidding-Platform/services/bot-service/internal/bidclient"
 	"github.com/Osireg17/AI-Bidding-Platform/services/bot-service/internal/domain"
 	"go.uber.org/zap"
@@ -65,14 +66,15 @@ type AuctionContext struct {
 
 // BotAgent wraps an ADK llmagent for a single bot personality.
 type BotAgent struct {
-	bot          *domain.Bot
-	agent        adkagent.Agent
-	bidClient    *bidclient.BidServiceClient
-	repo         domain.BotBidRepository
-	logger       *zap.Logger
-	geminiAPIKey string
-	placeBidTool adktool.Tool
-	instruction  string
+	bot           *domain.Bot
+	agent         adkagent.Agent
+	bidClient     *bidclient.BidServiceClient
+	bankingClient *bankingclient.BankingServiceClient
+	repo          domain.BotBidRepository
+	logger        *zap.Logger
+	geminiAPIKey  string
+	placeBidTool  adktool.Tool
+	instruction   string
 }
 
 type placeBidArgs struct {
@@ -110,12 +112,13 @@ amount is strictly greater than the current highest bid.` + bidRule,
 func (ba *BotAgent) ID() int64    { return ba.bot.ID }
 func (ba *BotAgent) Name() string { return ba.bot.Name }
 
-func NewBotAgent(ctx context.Context, bot *domain.Bot, geminiAPIKey string, bidClient *bidclient.BidServiceClient, repo domain.BotBidRepository, logger *zap.Logger) (*BotAgent, error) {
+func NewBotAgent(ctx context.Context, bot *domain.Bot, geminiAPIKey string, bidClient *bidclient.BidServiceClient, bankingClient *bankingclient.BankingServiceClient, repo domain.BotBidRepository, logger *zap.Logger) (*BotAgent, error) {
 	ba := &BotAgent{
-		bot:       bot,
-		bidClient: bidClient,
-		repo:      repo,
-		logger:    logger,
+		bot:           bot,
+		bidClient:     bidClient,
+		bankingClient: bankingClient,
+		repo:          repo,
+		logger:        logger,
 	}
 
 	placeBidTool, err := functiontool.New(functiontool.Config{
@@ -201,19 +204,89 @@ func (ba *BotAgent) Evaluate(ctx context.Context, ac AuctionContext) error {
 	if minBid == 0 {
 		minBid = ac.StartPrice
 	}
-	msg := genai.NewContentFromText(fmt.Sprintf(
-		"Auction ID: %d\nTitle: %s\nDescription: %s\nStart Price: %.2f\nHighest Bid: %.2f\nMinimum Valid Bid: %.2f\nEnds At: %s\nEvent: %s\n\nDecide whether to bid. Your bid MUST be greater than %.2f or it will be rejected.",
-		ac.AuctionID, ac.Title, ac.Description, ac.StartPrice, ac.HighestBid,
-		minBid, ac.EndTime.Format(time.RFC3339), ac.TriggerEvent, minBid,
-	), genai.RoleUser)
 
+	ba.logger.Info("evaluating auction",
+		zap.String("bot", ba.bot.Name),
+		zap.Int64("auction_id", ac.AuctionID),
+		zap.Float64("min_bid", minBid),
+	)
+
+	wallet, walletErr := ba.bankingClient.GetWallet(ctx, ba.bot.ID)
+	if walletErr != nil {
+		ba.logger.Warn("could not fetch wallet, proceeding without balance check",
+			zap.String("bot", ba.bot.Name),
+			zap.Error(walletErr),
+		)
+	} else if wallet.Balance < minBid {
+		if len(wallet.Items) > 0 {
+			bestItem := wallet.Items[0]
+			for _, item := range wallet.Items {
+				if item.PurchasePrice > bestItem.PurchasePrice {
+					bestItem = item
+				}
+			}
+
+			newBalance, err := ba.bankingClient.Buyout(ctx, bestItem.ID)
+			if err != nil {
+				ba.logger.Warn("failed to buyout item",
+					zap.String("bot", ba.bot.Name),
+					zap.Int64("item_id", bestItem.ID),
+					zap.Error(err),
+				)
+				return nil
+			}
+
+			ba.logger.Info("sold item to bank",
+				zap.String("bot", ba.bot.Name),
+				zap.Int64("item_id", bestItem.ID),
+				zap.Float64("new_balance", newBalance),
+			)
+
+			if newBalance < minBid {
+				ba.logger.Info("still cannot afford, skipping",
+					zap.String("bot", ba.bot.Name),
+					zap.Int64("auction_id", ac.AuctionID),
+					zap.Float64("new_balance", newBalance),
+					zap.Float64("min_bid", minBid),
+				)
+				return nil
+			}
+
+			wallet.Balance = newBalance
+		} else {
+			ba.logger.Info("insufficient balance, no items to sell, skipping",
+				zap.String("bot", ba.bot.Name),
+				zap.Int64("auction_id", ac.AuctionID),
+				zap.Float64("balance", wallet.Balance),
+				zap.Float64("min_bid", minBid),
+			)
+			return nil
+		}
+	}
+
+	balanceLine := ""
+	if wallet != nil {
+		balanceLine = fmt.Sprintf("Current Balance: £%.2f\n", wallet.Balance)
+	}
+
+	messageContent := fmt.Sprintf(
+		"Auction ID: %d\nTitle: %s\nDescription: %s\nStart Price: £%.2f\nHighest Bid: £%.2f\nMinimum Valid Bid: £%.2f\nEnds At: %s\nEvent: %s\n%sInstructions: Decide whether to bid. Your bid MUST be greater than £%.2f or it will be rejected.",
+		ac.AuctionID,
+		ac.Title,
+		ac.Description,
+		ac.StartPrice,
+		ac.HighestBid,
+		minBid,
+		ac.EndTime.Format(time.RFC3339),
+		ac.TriggerEvent,
+		balanceLine,
+		minBid,
+	)
+
+	msg := genai.NewContentFromText(messageContent, genai.RoleUser)
 	return ba.runWithFallback(ctx, msg)
 }
 
-// runWithFallback attempts each model in modelFallbackChain in order.
-// On a transient 429 it logs, waits 30 s, then tries the next model.
-// On a RESOURCE_EXHAUSTED 429 (spending cap) it returns ErrSpendingCapExhausted immediately —
-// no fallback model will help as they share the same project quota.
 func (ba *BotAgent) runWithFallback(ctx context.Context, msg *genai.Content) error {
 	const rateLimitBackoff = 30 * time.Second
 
@@ -228,8 +301,6 @@ func (ba *BotAgent) runWithFallback(ctx context.Context, msg *genai.Content) err
 			return nil
 		}
 
-		// Check spending cap BEFORE checking transient rate limit.
-		// Both are 429s but spending cap must short-circuit — no fallback helps.
 		if isSpendingCapExhausted(runErr) {
 			ba.logger.Error("spending cap exhausted, aborting evaluation",
 				zap.String("bot", ba.bot.Name),
