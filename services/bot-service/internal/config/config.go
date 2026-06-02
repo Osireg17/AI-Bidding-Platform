@@ -7,12 +7,13 @@ import (
 )
 
 type Config struct {
-	Port          int
-	DatabaseURL   string
-	RabbitMQURL   string
-	BidServiceURL string
-	LogLevel      string
-	GeminiAPIKey  string
+	Port              int
+	DatabaseURL       string
+	RabbitMQURL       string
+	BankingServiceURL string
+	BidServiceURL     string
+	LogLevel          string
+	GeminiAPIKey      string
 }
 
 func Load() (*Config, error) {
@@ -22,6 +23,7 @@ func Load() (*Config, error) {
 	}
 	dbURL := getEnv("DATABASE_URL", "")
 	rabbitURL := getEnv("RABBITMQ_URL", "")
+	bankingServiceURL := getEnv("BANKING_SERVICE_URL", "")
 	bidServiceURL := getEnv("BID_SERVICE_URL", "")
 	logLevel := getEnv("LOG_LEVEL", "info")
 	googleAPIKey := getEnv("GOOGLE_API_KEY", "")
@@ -32,6 +34,9 @@ func Load() (*Config, error) {
 	if rabbitURL == "" {
 		return nil, fmt.Errorf("RABBITMQ_URL is required")
 	}
+	if bankingServiceURL == "" {
+		return nil, fmt.Errorf("BANKING_SERVICE_URL is required")
+	}
 	if bidServiceURL == "" {
 		return nil, fmt.Errorf("BID_SERVICE_URL is required")
 	}
@@ -40,12 +45,13 @@ func Load() (*Config, error) {
 	}
 
 	return &Config{
-		Port:          port,
-		DatabaseURL:   dbURL,
-		RabbitMQURL:   rabbitURL,
-		BidServiceURL: bidServiceURL,
-		LogLevel:      logLevel,
-		GeminiAPIKey:  googleAPIKey,
+		Port:              port,
+		DatabaseURL:       dbURL,
+		RabbitMQURL:       rabbitURL,
+		BankingServiceURL: bankingServiceURL,
+		BidServiceURL:     bidServiceURL,
+		LogLevel:          logLevel,
+		GeminiAPIKey:      googleAPIKey,
 	}, nil
 }
 
