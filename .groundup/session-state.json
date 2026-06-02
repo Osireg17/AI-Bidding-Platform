@@ -1,0 +1,18 @@
+{
+  "mode": "implement",
+  "task": "Add appreciation to items — float64 percentage (±1–10%, 50/50), generated at RecordWin. CurrentValue = purchasePrice * (1 + appreciation). Buyout pays currentValue * 0.70. ItemSummary exposes CurrentValue. Bot agent selects item to sell by CurrentValue.",
+  "phase": "flow_map",
+  "current_file": null,
+  "files": [
+    { "path": "services/banking-service/internal/domain/item.go", "status": "pending" },
+    { "path": "services/banking-service/internal/repo/migrate.go", "status": "pending" },
+    { "path": "services/banking-service/internal/service/banking_service.go", "status": "pending" },
+    { "path": "services/banking-service/internal/domain/ports.go", "status": "pending" },
+    { "path": "services/bot-service/internal/bankingclient/client.go", "status": "pending" },
+    { "path": "services/bot-service/internal/agent/bot_agent.go", "status": "pending" }
+  ],
+  "skipped_gates": [],
+  "flow_diagram": null,
+  "scope_file": null,
+  "updated_at": "2026-06-02T00:00:00Z"
+}
