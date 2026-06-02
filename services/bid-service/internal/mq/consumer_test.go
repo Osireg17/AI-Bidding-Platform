@@ -9,6 +9,7 @@ import (
 
 	"github.com/Osireg17/AI-Bidding-Platform/services/bid-service/internal/domain"
 	"github.com/Osireg17/AI-Bidding-Platform/shared/events"
+	"github.com/Osireg17/AI-Bidding-Platform/shared/pkg/messaging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -41,7 +42,14 @@ func (m *mockSnapshotRepo) UpdateStatus(_ context.Context, auctionID int64, stat
 }
 
 func newTestConsumer(repo domain.AuctionSnapshotRepository) *AuctionEventConsumer {
-	return &AuctionEventConsumer{conn: nil, channel: nil, repo: repo, logger: zap.NewNop()}
+	c := &AuctionEventConsumer{repo: repo, logger: zap.NewNop()}
+	cfg := messaging.ConsumerConfig{
+		QueueName:   bidServiceQueueName,
+		RoutingKeys: []string{},
+		ServiceName: "bid",
+	}
+	c.BaseConsumer = messaging.NewBaseConsumerForTest(cfg, c, c.logger)
+	return c
 }
 
 type fakeDelivery struct {
@@ -207,26 +215,6 @@ func TestHandleDelivery_RepoError(t *testing.T) {
 	assert.Equal(t, 0, delivery.ackCalls)
 	assert.Equal(t, 1, delivery.nackCalls)
 	assert.True(t, delivery.nackRequeue)
-}
-
-func TestReUnmarshalPayload(t *testing.T) {
-	now := time.Now().UTC()
-	raw := map[string]any{
-		"auction_id":  float64(5),
-		"title":       "hello",
-		"description": "world",
-		"start_price": float64(100.0),
-		"start_time":  now.Format(time.RFC3339),
-		"end_time":    now.Add(time.Hour).Format(time.RFC3339),
-	}
-
-	result, err := reUnmarshalPayload[events.AuctionCreatedPayload](raw)
-
-	require.NoError(t, err)
-	assert.Equal(t, int64(5), result.AuctionID)
-	assert.Equal(t, "hello", result.Title)
-	assert.Equal(t, "world", result.Description)
-	assert.Equal(t, 100.0, result.StartPrice)
 }
 
 // Compile-time guard: ensure mockSnapshotRepo satisfies the interface.
