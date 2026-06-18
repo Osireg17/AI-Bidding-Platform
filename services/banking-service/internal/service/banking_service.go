@@ -21,7 +21,7 @@ type BankingService struct {
 	logger     *zap.Logger
 }
 
-func NewBankingService(db *bun.DB, walletRepo domain.WalletRepository, itemRepo domain.ItemRepository, logger *zap.Logger) *BankingService {
+func NewBankingService(db TxRunner, walletRepo domain.WalletRepository, itemRepo domain.ItemRepository, logger *zap.Logger) *BankingService {
 	return &BankingService{
 		tx:         db,
 		walletRepo: walletRepo,

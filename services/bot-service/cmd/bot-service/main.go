@@ -130,7 +130,7 @@ func main() {
 func runScheduled(ctx context.Context, consumer *mq.BotEventConsumer, logger *zap.Logger) error {
 	const (
 		windowStart = 9  // hour UTC
-		windowEnd   = 21 // hour UTC
+		windowEnd   = 15 // hour UTC
 	)
 
 	for {
@@ -152,7 +152,7 @@ func runScheduled(ctx context.Context, consumer *mq.BotEventConsumer, logger *za
 				consumerErrCh <- consumer.Start(consumerCtx)
 			}()
 
-			// Calculate duration until window closes (21:00 UTC today).
+			// Calculate duration until window closes (15:00 UTC today).
 			windowCloseToday := time.Date(now.Year(), now.Month(), now.Day(), windowEnd, 0, 0, 0, time.UTC)
 			durationUntilClose := time.Until(windowCloseToday)
 
